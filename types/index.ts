@@ -1,0 +1,38 @@
+export type StoreType = 'restaurant' | 'cafe' | 'fastfood' | 'bar' | 'all';
+
+export type TimeOption = number; // 분 단위 (15-90)
+
+export interface Store {
+  id: string;
+  name: string;
+  type: StoreType;
+  walkingTime: number; // 분
+  estimatedDuration: number; // 분
+  priceLevel: 1 | 2 | 3; // $, $$, $$$
+  cesReason: string; // CES 기준 한 줄 이유
+  latitude: number;
+  longitude: number;
+  address?: string;
+  photos?: string[]; // 사진 URL 리스트
+  reviews?: Review[]; // 리뷰 리스트
+}
+
+export interface Review {
+  authorName: string;
+  rating: number;
+  text: string;
+  time?: number; // Unix timestamp
+  relativeTimeDescription?: string;
+}
+
+export interface RecommendationRequest {
+  latitude: number;
+  longitude: number;
+  timeOption: number; // 분 단위
+  type: StoreType;
+}
+
+export interface RecommendationResponse {
+  stores: Store[];
+}
+

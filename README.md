@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CESEats 2026
 
-## Getting Started
+Las Vegas 2026 1/6 ~ 1/9 CES 전시장에서 빠른 식사 선택을 돕는 웹 애플리케이션입니다.
 
-First, run the development server:
+## 기능
+
+- 🗺️ Google Maps 기반 지도 표시
+- 📍 현재 위치 기반 음식점 추천
+- 🚶 도보 시간 계산
+- 📸 장소 사진 슬라이드
+- ⭐ 리뷰 및 평점 표시
+- 💬 피드백 기능
+
+## 시작하기
+
+### 필수 요구사항
+
+- Node.js 18 이상
+- npm 또는 yarn
+
+### 설치 및 실행
 
 ```bash
+# 의존성 설치
+npm install
+
+# 개발 서버 실행
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 환경 변수 설정
+.env.local
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+# Google Maps API 키 (필수)
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 
-## Learn More
+# 백엔드 API URL (필수)
+NEXT_PUBLIC_API_URL=http://localhost:8080/api
 
-To learn more about Next.js, take a look at the following resources:
+# Discord 웹훅 URL (선택, 피드백 기능용)
+NEXT_PUBLIC_DISCORD_WEBHOOK_URL=your_discord_webhook_url
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 기술 스택
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Framework**: Next.js 16
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS
+- **Maps**: Google Maps JavaScript API
+- **UI**: React 19
 
-## Deploy on Vercel
+## 프로젝트 구조
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+front/
+├── app/              # Next.js App Router 페이지
+├── components/       # React 컴포넌트
+├── lib/             # 유틸리티 함수
+├── types/           # TypeScript 타입 정의
+└── public/          # 정적 파일
+```
