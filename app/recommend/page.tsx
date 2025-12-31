@@ -17,7 +17,7 @@ export default function RecommendPage() {
     const fetchRecommendations = async () => {
       const lat = parseFloat(searchParams.get('lat') || '0');
       const lng = parseFloat(searchParams.get('lng') || '0');
-      const time = (searchParams.get('time') || '30') as TimeOption;
+      const time = parseInt(searchParams.get('time') || '30', 10) as TimeOption;
       const type = (searchParams.get('type') || 'all') as StoreType;
 
       if (!lat || !lng) {
