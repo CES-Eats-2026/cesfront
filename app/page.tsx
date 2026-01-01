@@ -236,32 +236,46 @@ export default function Home() {
     };
   }, [displayedCount, stores.length]);
 
-  const handleMarkerClick = (store: Store | null) => {
+  const handleMarkerClick = async (store: Store | null) => {
     if (store) {
       console.log('handleMarkerClick called with store:', store.name, 'type:', store.type, 'current type:', type);
       
-      // 조회수 증가 (마커 클릭 시)
-      incrementPlaceView(store.id);
+      // 조회수 증가 (마커 클릭 시) 및 실시간 업데이트
+      const updatedViewCount = await incrementPlaceView(store.id);
+      let updatedStore = store;
+      
+      if (updatedViewCount !== null) {
+        // stores 배열에서 해당 store의 조회수 업데이트
+        setStores(prevStores => 
+          prevStores.map(s => 
+            s.id === store.id 
+              ? { ...s, viewCount: updatedViewCount }
+              : s
+          )
+        );
+        // selectedStore용 업데이트된 store 객체 생성 (불변성 유지)
+        updatedStore = { ...store, viewCount: updatedViewCount };
+      }
       
       // 유형 필터를 해당 상점의 유형으로 변경 (먼저 타입 변경)
-      const needsTypeChange = store.type && store.type !== 'all' && store.type !== type;
+      const needsTypeChange = updatedStore.type && updatedStore.type !== 'all' && updatedStore.type !== type;
       
       if (needsTypeChange) {
-        console.log('Changing type from', type, 'to', store.type);
+        console.log('Changing type from', type, 'to', updatedStore.type);
         // 타입 변경 - 즉시 실행
-        setType(store.type);
+        setType(updatedStore.type);
         
         // 타입 변경 후 stores가 필터링될 때까지 기다린 후 selectedStore 설정
         // 더 긴 지연 시간으로 필터링 완료 보장
         setTimeout(() => {
-          console.log('Setting selectedStore after type change:', store.name);
-          setSelectedStore(store);
+          console.log('Setting selectedStore after type change:', updatedStore.name);
+          setSelectedStore(updatedStore);
           setClickedMapLocation(null);
         }, 800); // 타입 변경 후 필터링이 완료될 때까지 충분한 시간 대기
       } else {
         console.log('No type change needed, setting selectedStore immediately');
         // 타입이 변경되지 않으면 즉시 설정
-        setSelectedStore(store);
+        setSelectedStore(updatedStore);
         setClickedMapLocation(null);
       }
     } else {
@@ -270,12 +284,26 @@ export default function Home() {
     }
   };
 
-  const handleStoreCardClick = (store: Store) => {
-    // 조회수 증가 (카드 클릭 시)
-    incrementPlaceView(store.id);
+  const handleStoreCardClick = async (store: Store) => {
+    // 조회수 증가 (카드 클릭 시) 및 실시간 업데이트
+    const updatedViewCount = await incrementPlaceView(store.id);
+    let updatedStore = store;
+    
+    if (updatedViewCount !== null) {
+      // stores 배열에서 해당 store의 조회수 업데이트
+      setStores(prevStores => 
+        prevStores.map(s => 
+          s.id === store.id 
+            ? { ...s, viewCount: updatedViewCount }
+            : s
+        )
+      );
+      // selectedStore용 업데이트된 store 객체 생성 (불변성 유지)
+      updatedStore = { ...store, viewCount: updatedViewCount };
+    }
     
     // selectedStore 설정 (지도 중심은 항상 사용자 위치 고정)
-    setSelectedStore(store);
+    setSelectedStore(updatedStore);
     // mapCenter는 설정하지 않음 (지도 중심은 항상 사용자 위치 고정)
     setClickedMapLocation(null);
   };
@@ -543,7 +571,24 @@ export default function Home() {
                               onClick={() => handleStoreCardClick(store)}
                               className={selectedStore?.id === store.id ? 'ring-2 ring-blue-500 rounded-xl' : ''}
                             >
-                              <StoreCard store={store} isSelected={selectedStore?.id === store.id} />
+                              <StoreCard 
+                                store={store} 
+                                isSelected={selectedStore?.id === store.id}
+                                onViewCountUpdate={(placeId, viewCount) => {
+                                  // stores 배열에서 해당 store의 조회수 업데이트
+                                  setStores(prevStores => 
+                                    prevStores.map(s => 
+                                      s.id === placeId 
+                                        ? { ...s, viewCount }
+                                        : s
+                                    )
+                                  );
+                                  // selectedStore도 업데이트
+                                  if (selectedStore?.id === placeId) {
+                                    setSelectedStore({ ...selectedStore, viewCount });
+                                  }
+                                }}
+                              />
                             </div>
                           ))}
                         {displayedCount < filteredStores.length && (

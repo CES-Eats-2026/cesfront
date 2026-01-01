@@ -36,8 +36,9 @@ export function getGoogleMapsDeepLink(latitude: number, longitude: number): stri
 /**
  * 장소 조회수 증가 API 호출
  * @param placeId Google Places place_id
+ * @returns 업데이트된 조회수
  */
-export async function incrementPlaceView(placeId: string): Promise<void> {
+export async function incrementPlaceView(placeId: string): Promise<number | null> {
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
   
   try {
@@ -50,10 +51,33 @@ export async function incrementPlaceView(placeId: string): Promise<void> {
 
     if (!response.ok) {
       console.error('Failed to increment view count:', response.status);
+      return null;
+    }
+
+    // 응답 본문이 있는지 확인
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.error('Response is not JSON:', contentType);
+      return null;
+    }
+
+    // 응답 본문 텍스트로 먼저 읽어서 확인
+    const text = await response.text();
+    if (!text || text.trim().length === 0) {
+      console.error('Response body is empty');
+      return null;
+    }
+
+    try {
+      const viewCount = JSON.parse(text);
+      return typeof viewCount === 'number' ? viewCount : null;
+    } catch (parseError) {
+      console.error('Failed to parse JSON:', parseError, 'Response text:', text);
+      return null;
     }
   } catch (error) {
     console.error('Error incrementing view count:', error);
-    // 조회수 증가 실패는 사용자에게 보이지 않도록 조용히 처리
+    return null;
   }
 }
 

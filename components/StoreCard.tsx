@@ -7,9 +7,10 @@ import { getGoogleMapsDeepLink, incrementPlaceView } from '@/lib/api';
 interface StoreCardProps {
   store: Store;
   isSelected?: boolean; // 선택되었는지 여부
+  onViewCountUpdate?: (placeId: string, viewCount: number) => void; // 조회수 업데이트 콜백
 }
 
-export default function StoreCard({ store, isSelected = false }: StoreCardProps) {
+export default function StoreCard({ store, isSelected = false, onViewCountUpdate }: StoreCardProps) {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
@@ -20,9 +21,12 @@ export default function StoreCard({ store, isSelected = false }: StoreCardProps)
     3: '$$$',
   };
 
-  const handleNavigate = () => {
-    // 조회수 증가 (카드 클릭 시)
-    incrementPlaceView(store.id);
+  const handleNavigate = async () => {
+    // 조회수 증가 (길찾기 버튼 클릭 시) 및 실시간 업데이트
+    const updatedViewCount = await incrementPlaceView(store.id);
+    if (updatedViewCount !== null && onViewCountUpdate) {
+      onViewCountUpdate(store.id, updatedViewCount);
+    }
     
     const deepLink = getGoogleMapsDeepLink(store.latitude, store.longitude);
     window.open(deepLink, '_blank');
