@@ -13,8 +13,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CES Eats - 지금 뭐 먹지?",
+  title: "CES EATS 2026",
   description: "10초 안에 갈 곳을 결정하세요",
+  icons: {
+    icon: [
+      { url: '/web.png', sizes: 'any' },
+      { url: '/web.png', type: 'image/png' },
+    ],
+    apple: '/web.png',
+  },
 };
 
 export default function RootLayout({

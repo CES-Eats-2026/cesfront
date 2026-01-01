@@ -82,70 +82,55 @@ export async function incrementPlaceView(placeId: string): Promise<number | null
   }
 }
 
+/**
+ * 피드백을 백엔드 API를 통해 Discord로 전송
+ * @param feedback 피드백 내용
+ * @param image 이미지 파일 (선택사항)
+ */
 export async function sendFeedbackToDiscord(feedback: string, image: File | null): Promise<void> {
-  const webhookUrl = process.env.NEXT_PUBLIC_DISCORD_WEBHOOK_URL;
-  
-  if (!webhookUrl) {
-    throw new Error('Discord 웹훅 URL이 설정되지 않았습니다.');
-  }
-
   try {
+    let imageBase64: string | undefined;
+    let imageName: string | undefined;
+
+    // 이미지가 있으면 base64로 변환
     if (image) {
-      // 이미지가 있는 경우 multipart/form-data로 전송
-      const payload = {
-        content: `**새 피드백이 도착했습니다!**\n\n${feedback}`,
-        embeds: [
-          {
-            title: '피드백 내용',
-            description: feedback,
-            color: 0x3498db, // 파란색
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      };
-
-      const formData = new FormData();
-      formData.append('payload_json', JSON.stringify(payload));
-      formData.append('file', image, image.name);
-
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        body: formData,
+      imageBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64String = reader.result as string;
+          // data:image/jpeg;base64, 부분 제거
+          const base64 = base64String.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(image);
       });
+      imageName = image.name;
+    }
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Discord 웹훅 전송 실패: ${response.status} ${errorText}`);
-      }
-    } else {
-      // 이미지가 없는 경우 JSON만 전송
-      const payload = {
-        content: `**새 피드백이 도착했습니다!**\n\n${feedback}`,
-        embeds: [
-          {
-            title: '피드백 내용',
-            description: feedback,
-            color: 0x3498db,
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      };
+    const response = await fetch(`${API_BASE_URL}/feedback`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        feedback,
+        imageBase64,
+        imageName,
+      }),
+    });
 
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+      throw new Error(errorData.message || `피드백 전송 실패: ${response.status}`);
+    }
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Discord 웹훅 전송 실패: ${response.status} ${errorText}`);
-      }
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.message || '피드백 전송에 실패했습니다.');
     }
   } catch (error) {
-    console.error('Error sending feedback to Discord:', error);
+    console.error('Error sending feedback:', error);
     throw error;
   }
 }

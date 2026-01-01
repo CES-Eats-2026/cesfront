@@ -69,7 +69,8 @@ export default function FeedbackModal({ isOpen, onClose, onSubmit }: FeedbackMod
       alert('피드백이 전송되었습니다. 감사합니다!');
     } catch (error) {
       console.error('Error submitting feedback:', error);
-      alert('피드백 전송에 실패했습니다. 다시 시도해주세요.');
+      const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
+      alert(`피드백 전송에 실패했습니다.\n\n${errorMessage}\n\n다시 시도해주세요.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -124,7 +125,7 @@ export default function FeedbackModal({ isOpen, onClose, onSubmit }: FeedbackMod
               placeholder="바쁜 CES 2026 일정 중 식사 고민을 줄이기 위해 만든 CESEats예요. 서비스를
 사용하면서 느낀 점을 자유롭게 적어주세요!"
               rows={6}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-gray-900"
               disabled={isSubmitting}
             />
           </div>

@@ -308,36 +308,60 @@ export default function Home() {
     setClickedMapLocation(null);
   };
 
-  // 드래그 시작
-  const handleDragStart = (e: React.MouseEvent) => {
+  // 드래그 시작 (마우스 및 터치 지원)
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
     setIsDragging(true);
-    setDragStartY(e.clientY);
-    setDragStartHeight(optionsHeight);
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    setDragStartY(clientY);
+    // 패널이 아래로 내려가 있으면 panelOffset을 기준으로, 아니면 optionsHeight를 기준으로
+    if (panelOffset > 0) {
+      setDragStartHeight(panelOffset);
+    } else {
+      setDragStartHeight(optionsHeight);
+    }
     e.preventDefault();
   };
 
-  // 드래그 중
+  // 드래그 중 (마우스 및 터치 지원)
   useEffect(() => {
     if (!isDragging) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
-      const deltaY = dragStartY - e.clientY; // 위로 드래그하면 양수
-      const newHeight = Math.max(200, Math.min(600, dragStartHeight + deltaY)); // 최소 200px 보장
-      setOptionsHeight(newHeight);
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      const deltaY = dragStartY - clientY; // 위로 드래그하면 양수
+      
+      // 패널이 아래로 내려가 있는 경우 (panelOffset > 0)
+      if (panelOffset > 0) {
+        // 위로 드래그하면 패널을 위로 올리기
+        const newOffset = Math.max(0, panelOffset - deltaY);
+        setPanelOffset(newOffset);
+        // 패널이 완전히 위로 올라가면 높이 조절 모드로 전환
+        if (newOffset === 0) {
+          setOptionsHeight(Math.max(200, Math.min(window.innerHeight * 0.8, dragStartHeight)));
+        }
+      } else {
+        // 패널이 위에 있는 경우 높이 조절
+        const newHeight = Math.max(200, Math.min(window.innerHeight * 0.8, dragStartHeight + deltaY));
+        setOptionsHeight(newHeight);
+      }
     };
 
-    const handleMouseUp = () => {
+    const handleEnd = () => {
       setIsDragging(false);
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchmove', handleMove, { passive: false });
+    window.addEventListener('touchend', handleEnd);
 
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('touchend', handleEnd);
     };
-  }, [isDragging, dragStartY, dragStartHeight]);
+  }, [isDragging, dragStartY, dragStartHeight, panelOffset]);
 
   // 지도 중심은 항상 사용자 위치(fixedLocation 또는 location)로 고정
   // mapCenter는 selectedStore 위치로 변경될 수 있으므로 사용하지 않음
@@ -369,18 +393,18 @@ export default function Home() {
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center justify-center gap-3">
-        <Image
-              src="/ceslogo.png"
-              alt="CES Logo"
-              width={32}
-              height={32}
+            <Image
+              src="/web.png"
+              alt="CES EATS Logo"
+              width={40}
+              height={40}
               className="object-contain"
               unoptimized
-          priority
-        />
-            <h1 className="text-xl font-bold text-gray-900">
-              CESEats 2026
-          </h1>
+              priority
+            />
+            <h1 className="text-xl font-bold text-black">
+              CES EATS 2026
+            </h1>
           </div>
           <button
             onClick={() => setIsFeedbackModalOpen(true)}
@@ -427,57 +451,14 @@ export default function Home() {
 
         {/* 옵션 선택 및 장소 목록 영역 - 모바일: 아래, 데스크톱: 오른쪽 */}
         <div 
-          className="bg-white border-t lg:border-t-0 lg:border-l border-gray-200 flex-shrink-0 relative lg:rounded-none rounded-t-2xl overflow-visible lg:w-[500px] lg:shadow-none lg:translate-y-0"
+          className="bg-white border-t lg:border-t-0 lg:border-l border-gray-200 flex-shrink-0 relative lg:rounded-none rounded-t-2xl lg:w-[500px] lg:shadow-none lg:translate-y-0"
           style={{ 
             boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.15)',
             transform: isDesktop ? 'none' : `translateY(${panelOffset}px)`,
-            transition: isDesktop ? 'none' : 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)' // 반동 효과
+            transition: isDesktop ? 'none' : 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)', // 반동 효과
+            overflow: 'visible' // 드래그 핸들이 보이도록
           }}
         >
-          {/* 토글 버튼 - 모바일에서만 표시 */}
-          <button
-            onClick={handleToggle}
-            className="lg:hidden absolute top-2 right-2 z-20 bg-white rounded-full p-2 shadow-md hover:bg-gray-50 transition-colors"
-            aria-label={panelOffset > 0 ? '위로 올리기' : '아래로 내리기'}
-          >
-            <svg 
-              className={`w-5 h-5 text-gray-600 transition-transform ${panelOffset > 0 ? 'rotate-180' : ''}`}
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-            </svg>
-          </button>
-
-          {/* 드래그 핸들 - 모바일에서만 표시 (패널 상단 회색 부분) */}
-          <div
-            onClick={(e) => {
-              // 패널이 아래로 내려갔을 때 클릭하면 위로 올리기
-              if (panelOffset > 0) {
-                e.preventDefault();
-                e.stopPropagation();
-                setPanelOffset(0);
-              }
-            }}
-            onMouseDown={(e) => {
-              // 패널이 위에 있을 때만 드래그 가능
-              if (panelOffset === 0) {
-                handleDragStart(e);
-              } else {
-                e.preventDefault();
-              }
-            }}
-            className={`lg:hidden absolute top-0 left-1/2 -translate-x-1/2 w-16 h-6 cursor-pointer z-30 bg-white hover:bg-gray-50 transition-colors flex items-center justify-center ${
-              isDragging ? 'bg-gray-50' : ''
-            }`}
-          >
-            <div className="flex flex-col gap-1 items-center">
-              <div className="w-12 h-0.5 bg-gray-400 rounded-full"></div>
-              <div className="w-12 h-0.5 bg-gray-400 rounded-full"></div>
-              <div className="w-12 h-0.5 bg-gray-400 rounded-full"></div>
-            </div>
-          </div>
           
           {/* 옵션 및 장소 목록 컨텐츠 */}
           <div
@@ -490,9 +471,32 @@ export default function Home() {
               transition: isDragging ? 'none' : 'height 1s cubic-bezier(0.25, 2, 0.5, 1)'
             }}
           >
-              <div className="h-full overflow-y-auto" ref={optionsContainerRef}>
-              {/* 옵션 선택 - sticky로 고정 */}
-              <div ref={stickyOptionsRef} className="sticky top-0 z-10 bg-white px-4 pt-8 lg:pt-4 pb-4 border-b border-gray-200 shadow-sm">
+              <div className="h-full overflow-y-auto" ref={optionsContainerRef} style={{ WebkitOverflowScrolling: 'touch', position: 'relative' }}>
+              {/* 옵션 선택 - sticky로 고정 (드래그 가능 영역) */}
+              <div 
+                ref={stickyOptionsRef} 
+                className="sticky top-0 z-[60] bg-white px-4 pt-16 lg:pt-4 pb-4 border-b border-gray-200 shadow-sm"
+                onTouchStart={(e) => {
+                  if (!isDesktop) {
+                    handleDragStart(e);
+                  }
+                }}
+                onMouseDown={(e) => {
+                  if (!isDesktop) {
+                    handleDragStart(e);
+                  }
+                }}
+                style={{
+                  cursor: isDesktop ? 'default' : 'grab',
+                  touchAction: 'none'
+                }}
+              >
+                {/* 드래그 핸들 시각적 표시 (이벤트 없음) */}
+                <div className="lg:hidden absolute top-2 left-1/2 -translate-x-1/2 flex flex-col gap-1 items-center pointer-events-none">
+                  <div className="w-10 h-0.5 bg-gray-400 rounded-full"></div>
+                  <div className="w-10 h-0.5 bg-gray-400 rounded-full"></div>
+                  <div className="w-10 h-0.5 bg-gray-400 rounded-full"></div>
+                </div>
                 <OptionSelector
                   timeOption={timeOption}
                   type={type}
