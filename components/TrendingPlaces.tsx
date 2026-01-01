@@ -6,6 +6,8 @@ import { Store } from '@/types';
 interface TrendingPlacesProps {
   stores: Store[];
   onPlaceClick?: (store: Store) => void;
+  isCollapsed?: boolean; // 외부에서 접기/펼치기 제어
+  onCollapseChange?: (collapsed: boolean) => void; // 접기/펼치기 상태 변경 콜백
 }
 
 interface RankedStore extends Store {
@@ -13,9 +15,22 @@ interface RankedStore extends Store {
   viewCountIncrease: number; // 조회수 증가량
 }
 
-export default function TrendingPlaces({ stores, onPlaceClick }: TrendingPlacesProps) {
+export default function TrendingPlaces({ stores, onPlaceClick, isCollapsed, onCollapseChange }: TrendingPlacesProps) {
   const [previousViewCounts, setPreviousViewCounts] = useState<{ [key: string]: number }>({});
-  const [isExpanded, setIsExpanded] = useState(true); // 접기/펼치기 상태
+  const [internalExpanded, setInternalExpanded] = useState(true); // 내부 접기/펼치기 상태
+  
+  // 외부에서 제어되는 경우 외부 상태 사용, 아니면 내부 상태 사용
+  const isExpanded = isCollapsed !== undefined ? !isCollapsed : internalExpanded;
+  
+  const setIsExpanded = (expanded: boolean) => {
+    if (isCollapsed !== undefined && onCollapseChange) {
+      // 외부 제어 모드
+      onCollapseChange(!expanded);
+    } else {
+      // 내부 제어 모드
+      setInternalExpanded(expanded);
+    }
+  };
 
   // 순위와 조회수에 따른 동적 메시지 생성
   const getTrendingMessage = (rank: number, viewCount: number, viewCountIncrease: number): string => {

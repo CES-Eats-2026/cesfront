@@ -33,6 +33,7 @@ export default function Home() {
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [displayedCount, setDisplayedCount] = useState(10); // 표시할 아이템 수
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const [isTrendingCollapsed, setIsTrendingCollapsed] = useState(false); // 실시간 조회수 급상승 접기/펼치기 상태
 
   // 고정 위치: The Venetian Expo
   const fixedLocation = { lat: 36.1215699, lng: -115.1651093 };
@@ -278,9 +279,13 @@ export default function Home() {
         setSelectedStore(updatedStore);
         setClickedMapLocation(null);
       }
+      // 마커 클릭 시 실시간 조회수 급상승 자동 접기
+      setIsTrendingCollapsed(true);
     } else {
       setSelectedStore(null);
       setClickedMapLocation(null);
+      // 선택 해제 시 실시간 조회수 급상승 펼치기
+      setIsTrendingCollapsed(false);
     }
   };
 
@@ -446,6 +451,8 @@ export default function Home() {
             onPlaceClick={(store) => {
               handleMarkerClick(store);
             }}
+            isCollapsed={isTrendingCollapsed}
+            onCollapseChange={setIsTrendingCollapsed}
           />
         </div>
 

@@ -16,6 +16,9 @@ export default function OptionSelector({
   onTimeChange,
   onTypeChange,
 }: OptionSelectorProps) {
+  // 유형 섹션 접기/펼치기 상태
+  const [isTypeExpanded, setIsTypeExpanded] = useState(true);
+  
   // 거리(미터)를 시간으로 변환: 도보 속도 5km/h 기준
   const distanceToTime = (meters: number): number => {
     // (meters / 5000) * 60
@@ -165,21 +168,38 @@ export default function OptionSelector({
         <label className="block text-sm font-medium text-gray-700 mb-3">
           유형
         </label>
-        <div className="flex gap-2 flex-wrap pb-2">
-          {typeOptions.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => onTypeChange(option.value)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
-                type === option.value
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        {isTypeExpanded && (
+          <div className="flex gap-2 flex-wrap pb-2">
+            {typeOptions.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => onTypeChange(option.value)}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
+                  type === option.value
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* 유형 접기/펼치기 토글 버튼 */}
+        <button
+          onClick={() => setIsTypeExpanded(!isTypeExpanded)}
+          className="w-full mt-2 py-2 px-4 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm font-medium text-gray-700"
+        >
+          <span>{isTypeExpanded ? '접기' : '펼치기'}</span>
+          <svg
+            className={`w-4 h-4 transition-transform ${isTypeExpanded ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
       </div>
     </div>
   );
