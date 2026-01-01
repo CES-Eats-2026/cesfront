@@ -30,18 +30,38 @@ npm run dev
 
 
 ## 환경 변수 설정
-.env.local
+
+### 로컬 개발 (.env.local)
 
 ```env
 # Google Maps API 키 (필수)
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 
 # 백엔드 API URL (필수)
+# 로컬 개발: http://localhost:8080/api
+# 프로덕션: https://ceseats.r-e.kr/api (백엔드 서버)
 NEXT_PUBLIC_API_URL=http://localhost:8080/api
 
 # Discord 웹훅 URL (선택, 피드백 기능용)
 NEXT_PUBLIC_DISCORD_WEBHOOK_URL=your_discord_webhook_url
 ```
+
+### Vercel 프로덕션 배포
+
+Vercel 대시보드 → Settings → Environment Variables에서 설정:
+
+```env
+# Google Maps API 키 (필수)
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+
+# 백엔드 API URL (필수)
+NEXT_PUBLIC_API_URL=https://ceseats.r-e.kr/api
+
+# Discord 웹훅 URL (선택, 피드백 기능용)
+NEXT_PUBLIC_DISCORD_WEBHOOK_URL=your_discord_webhook_url
+```
+
+**참고**: 자세한 설정 방법은 `VERCEL_ENV_SETUP.md` 참고
 
 ## 기술 스택
 

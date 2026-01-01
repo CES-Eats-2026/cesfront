@@ -1,6 +1,7 @@
 import { RecommendationRequest, RecommendationResponse } from '@/types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
+// 백엔드 API URL (프로덕션: https://ceseats.r-e.kr/api, 로컬: http://localhost:8080/api)
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://ceseats.r-e.kr/api';
 
 export async function getRecommendations(
   request: RecommendationRequest
@@ -39,7 +40,7 @@ export function getGoogleMapsDeepLink(latitude: number, longitude: number): stri
  * @returns 업데이트된 조회수
  */
 export async function incrementPlaceView(placeId: string): Promise<number | null> {
-  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://ceseats.r-e.kr/api';
   
   try {
     const response = await fetch(`${API_BASE_URL}/places/${placeId}/view`, {
