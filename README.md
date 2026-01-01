@@ -46,13 +46,6 @@ CESEats는 이러한 문제를 해결하고,
 2026.01.06 ~ 2026.01.09에 개최되는 CES 2026 현장에서 실제 사용을 목표로 하는
 실험적(PoC) 프로젝트입니다.
 
-## 현재까지의 MVP (업데이트 : 2026.01.02)
-
-<video width="480" controls>
-  <source src="demo_v.0.1.mp4" type="video/mp4">
-  브라우저가 video 태그를 지원하지 않습니다.
-</video>
-
 ## 주요기능
 
 - 현재 사용자의 위치 기반 음식점 추천
@@ -61,5 +54,22 @@ CESEats는 이러한 문제를 해결하고,
 - Google Maps 리뷰, 메뉴 텍스트를 기반으로 음식 카테고리 자동 분류 (추가중)
 - 피드백 요청
 - 한/영 버전 (추가중)
+
+## 현재까지의 MVP 
+(업데이트 : 2026.01.02 version 0.1)
+
+- 웹페이지 Full Screen
+<img width="1702" height="1061" alt="image" src="https://github.com/user-attachments/assets/1bd145d9-37b6-4382-bb1c-355f78f5bcd8" />
+
+- 웹페이지 Split Screen
+<img width="550" height="900" alt="image" src="https://github.com/user-attachments/assets/5cacad2f-c1ad-43e1-a474-1392d976f574" />
+
+- 모바일
+<img width="400" height="900" alt="image" src="https://github.com/user-attachments/assets/7518a449-8588-47ca-ba04-a8852d4f1542" />
+
+- [유튜브 동영상 링크](https://www.youtube.com/watch?v=37cDLn0yzS0)
+
+[![CESEats Demo v0.1](https://img.youtube.com/vi/37cDLn0yzS0/0.jpg)](https://youtu.be/37cDLn0yzS0)
+
 
 
