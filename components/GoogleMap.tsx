@@ -2,7 +2,7 @@
 
 import { useMemo, useEffect, useRef, useCallback, useState } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow, OverlayView } from '@react-google-maps/api';
-import { Store } from '@/types';
+import { Store, StoreType } from '@/types';
 
 interface GoogleMapProps {
   center: { lat: number; lng: number };
@@ -11,6 +11,9 @@ interface GoogleMapProps {
   selectedStore?: Store | null;
   onMarkerClick?: (store: Store | null) => void;
   onMapLocationClick?: (location: { lat: number; lng: number; walkingTime: number; name?: string } | null) => void;
+  onAddStore?: (store: Store) => void; // 새로운 장소를 stores 배열에 추가하는 콜백
+  type?: StoreType; // 유형 필터
+  radiusKm?: number; // 반경 (km)
 }
 
 interface ClickedLocation {
@@ -42,7 +45,7 @@ interface PlaceDetails {
   }>;
 }
 
-const libraries: ('places' | 'drawing' | 'geometry' | 'visualization')[] = ['places'];
+const libraries: ('places' | 'drawing' | 'geometry' | 'visualization')[] = ['places', 'geometry'];
 
 type TravelMode = 'WALKING' | 'DRIVING' | 'TRANSIT';
 
@@ -53,6 +56,9 @@ export default function GoogleMapComponent({
   selectedStore,
   onMarkerClick,
   onMapLocationClick,
+  onAddStore,
+  type = 'all',
+  radiusKm = 2,
 }: GoogleMapProps) {
   const mapRef = useRef<google.maps.Map | null>(null);
   const circleRef = useRef<google.maps.Circle | null>(null);
@@ -67,6 +73,7 @@ export default function GoogleMapComponent({
   const [placeDetails, setPlaceDetails] = useState<PlaceDetails | null>(null);
   const [placeDetailsLoading, setPlaceDetailsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'reviews' | 'about'>('overview');
+  const [infoWindowPhotoIndex, setInfoWindowPhotoIndex] = useState(0); // InfoWindow 이미지 슬라이더 인덱스
   const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
   
@@ -79,7 +86,7 @@ export default function GoogleMapComponent({
   const mapOptions = useMemo(
     () => ({
       disableDefaultUI: false,
-      clickableIcons: false, // Google Maps 기본 마커 숨기기 (우리가 직접 마커를 표시)
+      clickableIcons: true, // Google Maps 기본 마커 클릭 가능하게 설정
       scrollwheel: true,
       zoomControl: true,
       streetViewControl: false,
@@ -100,6 +107,16 @@ export default function GoogleMapComponent({
 
   const zoom = useMemo(() => radiusToZoom(radius), [radius]);
 
+  // 지도 중심은 항상 원래 center prop을 사용 (현재 위치 고정)
+  // selectedStore가 있어도 지도는 현재 위치를 중심으로 유지
+  const mapCenter = useMemo(() => {
+    return center;
+  }, [center]);
+
+  const mapZoom = useMemo(() => {
+    return zoom;
+  }, [zoom]);
+
   const onLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
     
@@ -112,7 +129,7 @@ export default function GoogleMapComponent({
     if (typeof google !== 'undefined' && google.maps && google.maps.DirectionsRenderer) {
       directionsRendererRef.current = new google.maps.DirectionsRenderer({
         map: map,
-        suppressMarkers: true, // 기본 마커 숨기기 (우리가 직접 마커를 표시)
+        suppressMarkers: false, // 기본 마커 표시 (Google Maps 기본 마커 사용)
       });
     }
     
@@ -122,11 +139,12 @@ export default function GoogleMapComponent({
     }
     
     // 지도 로드 시 초기 Circle 생성
+    // Circle의 중심은 항상 원래 center prop을 사용 (현재 위치)
     if (radius > 0 && typeof google !== 'undefined' && google.maps && google.maps.Circle) {
       const radiusInMeters = Math.max(radius * 1000, 10);
       if (!circleRef.current) {
         circleRef.current = new google.maps.Circle({
-          center: center,
+          center: center, // 원래 center prop 사용 (현재 위치)
           radius: radiusInMeters,
           fillColor: '#4285F4',
           fillOpacity: 0.1,
@@ -140,13 +158,25 @@ export default function GoogleMapComponent({
     }
   }, [center, radius]);
 
-  // center나 radius가 변경되면 지도 업데이트
+  // mapCenter나 mapZoom이 변경되면 지도 업데이트
+  // 단, selectedStore가 있을 때는 지도를 이동하지 않음 (현재 위치 고정)
   useEffect(() => {
-    if (mapRef.current && center) {
-      mapRef.current.panTo(center);
-      mapRef.current.setZoom(zoom);
+    if (mapRef.current && mapCenter && !selectedStore) {
+      mapRef.current.panTo(mapCenter);
+      mapRef.current.setZoom(mapZoom);
     }
-  }, [center, zoom]);
+  }, [mapCenter, mapZoom, selectedStore]);
+
+  // selectedStore가 변경되면 해당 위치로 지도 이동
+  useEffect(() => {
+    if (!mapRef.current || !isLoaded || !selectedStore) return;
+
+    const storePosition = { lat: selectedStore.latitude, lng: selectedStore.longitude };
+    
+    // 지도가 해당 위치로 이동
+    mapRef.current.panTo(storePosition);
+    mapRef.current.setZoom(16); // 상세 보기 줌 레벨
+  }, [selectedStore, isLoaded]);
 
   // 거리 계산 함수 (Haversine formula)
   const calculateDistance = useCallback((lat1: number, lng1: number, lat2: number, lng2: number): number => {
@@ -177,17 +207,26 @@ export default function GoogleMapComponent({
           }
           
           // Google Maps 기본 마커(장소) 클릭 처리
-          if (e.latLng && onMapLocationClick) {
+          if (e.latLng) {
             const clickedLat = e.latLng.lat();
             const clickedLng = e.latLng.lng();
-            const distance = calculateDistance(center.lat, center.lng, clickedLat, clickedLng);
-            const walkingTime = Math.round(distance * 20); // 3km/h = 20분/km
             
-            onMapLocationClick({
-              lat: clickedLat,
-              lng: clickedLng,
-              walkingTime: walkingTime,
-            });
+            // 클릭한 위치의 장소 정보 가져오기
+            setClickedLocation({ lat: clickedLat, lng: clickedLng });
+            setShowDirectionsPanel(false); // 패널 닫기
+            onMarkerClick?.(null as any); // 추천된 장소 선택 해제
+            
+            // onMapLocationClick도 호출 (도보 시간 표시용)
+            if (onMapLocationClick) {
+              const distance = calculateDistance(center.lat, center.lng, clickedLat, clickedLng);
+              const walkingTime = Math.round(distance * 20); // 3km/h = 20분/km
+              
+              onMapLocationClick({
+                lat: clickedLat,
+                lng: clickedLng,
+                walkingTime: walkingTime,
+              });
+            }
           }
         }
         // 플래그 리셋
@@ -200,9 +239,11 @@ export default function GoogleMapComponent({
         google.maps.event.removeListener(clickListener);
       }
     };
-  }, [isLoaded, selectedStore, showDirectionsPanel, onMarkerClick, onMapLocationClick, center, calculateDistance]);
+    }, [isLoaded, selectedStore, showDirectionsPanel, onMarkerClick, onMapLocationClick, center, calculateDistance, stores]);
 
   // Circle 업데이트 (중복 방지)
+  // Circle의 중심은 항상 원래 center prop을 사용 (현재 위치 고정)
+  // selectedStore가 있어도 Circle은 현재 위치에 고정되어야 함
   useEffect(() => {
     if (!mapRef.current || !isLoaded || typeof google === 'undefined' || !google.maps || !google.maps.Circle) {
       return;
@@ -221,12 +262,14 @@ export default function GoogleMapComponent({
     const radiusInMeters = Math.max(radius * 1000, 10); // 최소 10m
     try {
       // 기존 Circle이 있으면 업데이트, 없으면 새로 생성
+      // 중요: Circle의 중심은 항상 원래 center prop을 사용 (selectedStore와 무관)
       if (circleRef.current) {
+        // 항상 원래 center로 강제 설정 (다른 곳에서 변경되었을 수 있으므로)
         circleRef.current.setCenter(center);
         circleRef.current.setRadius(radiusInMeters);
       } else {
         circleRef.current = new google.maps.Circle({
-          center: center,
+          center: center, // 원래 center prop 사용 (현재 위치)
           radius: radiusInMeters,
           fillColor: '#4285F4',
           fillOpacity: 0.1,
@@ -243,7 +286,54 @@ export default function GoogleMapComponent({
 
     // cleanup은 컴포넌트 언마운트 시에만 실행
     // 의존성 변경 시에는 Circle을 업데이트하므로 제거하지 않음
+    // selectedStore는 의존성에 포함하지 않음 (Circle은 항상 원래 center를 사용)
   }, [center.lat, center.lng, radius, isLoaded]);
+
+  // selectedStore가 변경될 때마다 Circle의 중심을 원래 center로 강제 고정
+  // 주기적으로도 체크하여 다른 곳에서 변경되었을 경우 원래 center로 복원
+  useEffect(() => {
+    if (!circleRef.current || !center) {
+      return;
+    }
+
+    // Circle의 중심이 원래 center와 다른지 확인하고 강제로 원래 center로 설정
+    const currentCenter = circleRef.current.getCenter();
+    if (currentCenter) {
+      const latDiff = Math.abs(currentCenter.lat() - center.lat);
+      const lngDiff = Math.abs(currentCenter.lng() - center.lng);
+      // 중심이 다르면 원래 center로 강제 설정
+      if (latDiff > 0.0001 || lngDiff > 0.0001) {
+        circleRef.current.setCenter(center);
+      }
+    } else {
+      circleRef.current.setCenter(center);
+    }
+  }, [selectedStore, center]);
+
+  // 주기적으로 Circle의 중심을 확인하고 원래 center로 고정
+  useEffect(() => {
+    if (!circleRef.current || !center || !isLoaded) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      if (circleRef.current && center) {
+        const currentCenter = circleRef.current.getCenter();
+        if (currentCenter) {
+          const latDiff = Math.abs(currentCenter.lat() - center.lat);
+          const lngDiff = Math.abs(currentCenter.lng() - center.lng);
+          // 중심이 다르면 원래 center로 강제 설정
+          if (latDiff > 0.0001 || lngDiff > 0.0001) {
+            circleRef.current.setCenter(center);
+          }
+        }
+      }
+    }, 100); // 100ms마다 체크
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [center, isLoaded]);
 
   // 경로 계산
   const calculateRoute = useCallback((mode: TravelMode) => {
@@ -348,12 +438,95 @@ export default function GoogleMapComponent({
               time: review.time || 0,
             })),
           });
-          setClickedLocation({
-            lat,
-            lng,
-            name: placeDetails.name || undefined,
-            placeId: placeId,
-          });
+          
+          // 클릭한 장소가 추천된 장소인지 확인
+          const matchingStore = stores?.find(store => 
+            Math.abs(store.latitude - lat) < 0.0001 && 
+            Math.abs(store.longitude - lng) < 0.0001
+          );
+          
+          if (matchingStore) {
+            // 추천된 장소이면 selectedStore로 설정
+            onMarkerClick?.(matchingStore);
+            setClickedLocation(null);
+          } else {
+            // 추천된 장소가 아니면 Store 객체로 변환하여 stores 배열에 추가
+            // 타입 결정 로직 (백엔드와 동일)
+            const determinePlaceType = (types: string[] | undefined): StoreType => {
+              if (!types || types.length === 0) {
+                return 'other';
+              }
+              
+              // meal_takeaway -> fastfood로 매핑
+              if (types.includes('meal_takeaway') || types.includes('fast_food')) {
+                return 'fastfood';
+              }
+              
+              // 지원하는 타입 확인
+              const supportedTypes = ['restaurant', 'cafe', 'bar', 'food', 'bakery', 'meal_delivery',
+                'night_club', 'liquor_store', 'store', 'shopping_mall', 'supermarket', 'convenience_store'];
+              
+              for (const type of types) {
+                if (supportedTypes.includes(type)) {
+                  return type as StoreType;
+                }
+              }
+              
+              return 'other';
+            };
+            
+            const placeType = determinePlaceType(placeDetails.types);
+            
+            // 도보 시간 계산
+            const distance = calculateDistance(center.lat, center.lng, lat, lng);
+            const walkingTime = Math.round(distance * 20); // 3km/h = 20분/km
+            
+            // 사진 URL 생성
+            const photoUrls: string[] = [];
+            if (placeDetails.photos && placeDetails.photos.length > 0) {
+              placeDetails.photos.slice(0, 5).forEach((photo: any) => {
+                if (photo.getUrl) {
+                  photoUrls.push(photo.getUrl({ maxWidth: 400, maxHeight: 400 }));
+                }
+              });
+            }
+            
+            // 리뷰 변환
+            const reviews = placeDetails.reviews?.map((review: any) => ({
+              authorName: review.author_name || '',
+              rating: review.rating || 0,
+              text: review.text || '',
+              time: review.time || 0,
+              relativeTimeDescription: review.relative_time_description || undefined,
+            })) || [];
+            
+            // Store 객체 생성
+            const newStore: Store = {
+              id: placeId,
+              name: placeDetails.name || '알 수 없는 장소',
+              type: placeType,
+              walkingTime: walkingTime,
+              estimatedDuration: walkingTime,
+              priceLevel: (placeDetails.price_level !== undefined && placeDetails.price_level !== null) 
+                ? Math.min(3, Math.max(1, placeDetails.price_level + 1)) as 1 | 2 | 3
+                : 2,
+              cesReason: '',
+              latitude: lat,
+              longitude: lng,
+              address: placeDetails.formatted_address,
+              photos: photoUrls,
+              reviews: reviews,
+            };
+            
+            // stores 배열에 추가
+            if (onAddStore) {
+              onAddStore(newStore);
+            }
+            
+            // selectedStore로 설정하여 카드 목록에서 표시되도록 함
+            onMarkerClick?.(newStore);
+            setClickedLocation(null);
+          }
         } else {
           console.error('Failed to get place details:', detailsStatus);
           if (location) {
@@ -380,7 +553,7 @@ export default function GoogleMapComponent({
         });
       }
     }
-  }, [isLoaded]);
+  }, [isLoaded, stores, onMarkerClick, onAddStore, center, calculateDistance]);
 
   // 장소 정보 가져오기 (좌표 기반)
   const fetchPlaceDetails = useCallback((location: { lat: number; lng: number }, placeId?: string) => {
@@ -414,8 +587,21 @@ export default function GoogleMapComponent({
         setPlaceDetailsLoading(false);
         if (status === google.maps.places.PlacesServiceStatus.OK && results && results.length > 0) {
           const place = results[0];
-          // Place Details 가져오기
-          fetchPlaceDetailsById(place.place_id!, location);
+          
+          // 클릭한 장소가 추천된 장소인지 확인
+          const matchingStore = stores?.find(store => 
+            Math.abs(store.latitude - location.lat) < 0.0001 && 
+            Math.abs(store.longitude - location.lng) < 0.0001
+          );
+          
+          if (matchingStore) {
+            // 추천된 장소이면 selectedStore로 설정
+            onMarkerClick?.(matchingStore);
+            setClickedLocation(null);
+          } else {
+            // 추천된 장소가 아니면 Place Details 가져오기
+            fetchPlaceDetailsById(place.place_id!, location);
+          }
         } else {
           // 장소를 찾을 수 없으면 좌표만 사용
           console.warn('Place not found, status:', status);
@@ -439,7 +625,7 @@ export default function GoogleMapComponent({
         lng: location.lng,
       });
     }
-  }, [isLoaded, fetchPlaceDetailsById]);
+  }, [isLoaded, fetchPlaceDetailsById, stores, onMarkerClick]);
 
   // selectedStore가 변경되면 장소 정보 가져오기
   useEffect(() => {
@@ -447,6 +633,21 @@ export default function GoogleMapComponent({
       fetchPlaceDetails({ lat: selectedStore.latitude, lng: selectedStore.longitude });
     }
   }, [selectedStore, isLoaded, showDirectionsPanel, fetchPlaceDetails]);
+
+  // clickedLocation이 변경되면 (추천된 장소가 아닌 경우) 장소 정보 가져오기
+  useEffect(() => {
+    if (clickedLocation && !selectedStore && isLoaded && !showDirectionsPanel) {
+      // 추천된 장소가 아닌 경우에만 장소 정보 가져오기
+      const isRecommendedStore = stores?.some(store => 
+        Math.abs(store.latitude - clickedLocation.lat) < 0.0001 && 
+        Math.abs(store.longitude - clickedLocation.lng) < 0.0001
+      );
+      
+      if (!isRecommendedStore) {
+        fetchPlaceDetails({ lat: clickedLocation.lat, lng: clickedLocation.lng });
+      }
+    }
+  }, [clickedLocation, selectedStore, isLoaded, showDirectionsPanel, stores, fetchPlaceDetails]);
 
   // 선택된 장소나 이동 수단이 변경되면 경로 재계산
   useEffect(() => {
@@ -485,6 +686,37 @@ export default function GoogleMapComponent({
     //   fetchPlaceDetails({ lat, lng });
     // }
   }, [selectedStore, showDirectionsPanel, onMarkerClick]);
+
+  // selectedStore 또는 clickedLocation이 변경되면 이미지 인덱스 초기화
+  useEffect(() => {
+    if (selectedStore || clickedLocation) {
+      setInfoWindowPhotoIndex(0);
+    }
+  }, [selectedStore, clickedLocation]);
+
+  // InfoWindow 이미지 슬라이더 자동 이동
+  useEffect(() => {
+    let photoCount = 0;
+    if (selectedStore?.photos) {
+      photoCount = selectedStore.photos.length;
+    } else if (placeDetails?.photos && Array.isArray(placeDetails.photos)) {
+      photoCount = Math.min(5, placeDetails.photos.length);
+    }
+    
+    if ((selectedStore || (clickedLocation && placeDetails)) && !showDirectionsPanel && photoCount > 1) {
+      // InfoWindow가 열려있고 이미지가 여러 개일 때 자동으로 순환
+      const interval = setInterval(() => {
+        setInfoWindowPhotoIndex((prev) => {
+          return (prev + 1) % photoCount;
+        });
+      }, 2000); // 2초마다 다음 이미지로
+
+      return () => clearInterval(interval);
+    } else if ((!selectedStore && !clickedLocation) || showDirectionsPanel) {
+      // InfoWindow가 닫히거나 패널이 열리면 첫 번째 이미지로 리셋
+      setInfoWindowPhotoIndex(0);
+    }
+  }, [selectedStore, clickedLocation, placeDetails, showDirectionsPanel]);
 
   // API 키가 없을 때
   if (!apiKey) {
@@ -555,8 +787,8 @@ export default function GoogleMapComponent({
     <div className="w-full h-full relative" style={{ minHeight: '400px' }}>
       <GoogleMap
         mapContainerStyle={{ width: '100%', height: '100%', minHeight: '400px' }}
-        center={center}
-        zoom={zoom}
+        center={mapCenter}
+        zoom={mapZoom}
         options={mapOptions}
         onLoad={onLoad}
       >
@@ -575,56 +807,52 @@ export default function GoogleMapComponent({
           }}
         />
 
-        {/* 추천 장소 마커 */}
-        {stores.map((store) => (
-          <Marker
-            key={store.id}
-            position={{ lat: store.latitude, lng: store.longitude }}
-            onClick={(e) => {
-              e.stop(); // 이벤트 전파 방지 - 지도 클릭 이벤트가 발생하지 않도록
-              isMarkerClickRef.current = true; // 마커 클릭 플래그 설정
-              
-              // 이미 선택된 마커를 다시 클릭하면 닫기
-              if (selectedStore?.id === store.id) {
-                onMarkerClick?.(null as any);
-              } else {
+        {/* stores 배열의 각 장소에 대한 마커 - 유형 필터 및 거리 필터 적용 */}
+        {stores
+          ?.filter((store) => {
+            // 유형 필터링
+            const typeMatch = type === 'all' || store.type === type || (type === 'other' && (!store.type || store.type === 'other'));
+            
+            if (!typeMatch) return false;
+            
+            // 거리 필터링 (Circle 내부에 있는지 확인)
+            const distance = calculateDistance(center.lat, center.lng, store.latitude, store.longitude);
+            const isWithinCircle = distance <= radiusKm;
+            
+            return isWithinCircle;
+          })
+          .map((store) => (
+            <Marker
+              key={store.id}
+              position={{ lat: store.latitude, lng: store.longitude }}
+              title={store.name}
+              icon={{
+                path: 'M -6,-6 L 6,-6 L 6,6 L -6,6 Z', // 사각형 (중심 기준, 크기 증가)
+                fillColor: '#EA4335',
+                fillOpacity: 0.85,
+                strokeColor: '#FFFFFF',
+                strokeWeight: 1.5,
+                scale: 1,
+              }}
+              onClick={() => {
+                console.log('Marker clicked:', store.name, 'type:', store.type);
+                isMarkerClickRef.current = true;
                 onMarkerClick?.(store);
-              }
-              
-              // 플래그를 충분한 시간 후 리셋 (지도 클릭 이벤트가 처리되기 전까지)
-              setTimeout(() => {
-                isMarkerClickRef.current = false;
-              }, 200);
-              // 패널 표시 비활성화
-              // setShowDirectionsPanel(true);
-              // 장소 정보 가져오기 (place_id가 있으면 직접 사용)
-              if (isLoaded) {
-                // Store에 place_id가 있으면 직접 사용, 없으면 좌표로 검색
-                const storeWithPlaceId = store as any;
-                if (storeWithPlaceId.placeId) {
-                  fetchPlaceDetailsById(storeWithPlaceId.placeId, { lat: store.latitude, lng: store.longitude });
-                } else {
-                  fetchPlaceDetails({ lat: store.latitude, lng: store.longitude });
-                }
-              }
-            }}
-            title={store.name}
-            icon={{
-              path: google.maps.SymbolPath.CIRCLE,
-              scale: 6,
-              fillColor: '#EA4335',
-              fillOpacity: 1,
-              strokeColor: '#ffffff',
-              strokeWeight: 2,
-            }}
-          />
-        ))}
+                setTimeout(() => {
+                  isMarkerClickRef.current = false;
+                }, 200);
+              }}
+            />
+          ))}
 
         {/* 선택된 장소 정보창 - 간단한 정보만 표시 (패널이 열려있지 않을 때만) */}
         {selectedStore && !showDirectionsPanel && (
           <>
             <InfoWindow
               position={{ lat: selectedStore.latitude, lng: selectedStore.longitude }}
+              options={{
+                pixelOffset: new google.maps.Size(0, -40), // 마커 위로 40px 이동하여 마커를 가리지 않도록
+              }}
               onCloseClick={() => {
                 onMarkerClick?.(null as any);
                 setShowDirectionsPanel(false);
@@ -635,40 +863,221 @@ export default function GoogleMapComponent({
                 setDirections(null);
               }}
             >
-              <div className="p-3">
-                <h3 className="font-bold text-base mb-1">{selectedStore.name}</h3>
-                <p className="text-xs text-gray-600 mb-2">{selectedStore.cesReason}</p>
-                {selectedStore.address && (
-                  <p className="text-xs text-gray-500">{selectedStore.address}</p>
+              <div className="p-0" style={{ maxWidth: '300px' }}>
+                {/* 이미지 슬라이더 */}
+                {selectedStore.photos && selectedStore.photos.length > 0 && (
+                  <div className="relative w-full h-40 bg-gray-200 overflow-hidden group">
+                    {/* 이미지 컨테이너 */}
+                    <div 
+                      className="flex transition-transform duration-300 ease-in-out h-full"
+                      style={{ transform: `translateX(-${infoWindowPhotoIndex * 100}%)` }}
+                    >
+                      {selectedStore.photos.map((photo, index) => (
+                        <div key={index} className="min-w-full h-full flex-shrink-0 relative">
+                          <img
+                            src={photo}
+                            alt={`${selectedStore.name} - 사진 ${index + 1}`}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 이전/다음 버튼 (여러 사진이 있을 때만 표시) */}
+                    {selectedStore.photos.length > 1 && (
+                      <>
+                        {/* 이전 버튼 */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setInfoWindowPhotoIndex((prev) => 
+                              prev === 0 ? selectedStore.photos!.length - 1 : prev - 1
+                            );
+                          }}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-50"
+                          aria-label="이전 사진"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          </svg>
+                        </button>
+
+                        {/* 다음 버튼 */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setInfoWindowPhotoIndex((prev) => 
+                              prev === selectedStore.photos!.length - 1 ? 0 : prev + 1
+                            );
+                          }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-50"
+                          aria-label="다음 사진"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+
+                        {/* 사진 인디케이터 (하단 점) */}
+                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-50">
+                          {selectedStore.photos.map((_, index) => (
+                            <button
+                              key={index}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setInfoWindowPhotoIndex(index);
+                              }}
+                              className={`w-1.5 h-1.5 rounded-full transition-all ${
+                                index === infoWindowPhotoIndex 
+                                  ? 'bg-white w-4' 
+                                  : 'bg-white/50 hover:bg-white/75'
+                              }`}
+                              aria-label={`사진 ${index + 1}로 이동`}
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
-              </div>
-            </InfoWindow>
-            {/* 도보 시간 표시 오버레이 - InfoWindow 위 모서리에 표시 */}
-            <OverlayView
-              position={{ lat: selectedStore.latitude, lng: selectedStore.longitude }}
-              mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
-            >
-              <div style={{ 
-                position: 'absolute',
-                top: '-60px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                pointerEvents: 'none'
-              }}>
-                <div className="bg-blue-600 text-white px-3 py-1.5 rounded-lg shadow-lg whitespace-nowrap relative">
-                  <div className="flex items-center gap-1.5">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                    </svg>
-                    <span className="text-sm font-semibold">도보 {selectedStore.walkingTime}분</span>
-                  </div>
-                  {/* 말풍선 꼬리 */}
-                  <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full">
-                    <div className="w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-blue-600"></div>
-                  </div>
+                
+                {/* 텍스트 정보 */}
+                <div className="p-3">
+                  <h3 className="font-bold text-base mb-1">{selectedStore.name}</h3>
+                  <p className="text-xs text-gray-600 mb-2">{selectedStore.cesReason}</p>
+                  {selectedStore.address && (
+                    <p className="text-xs text-gray-500">{selectedStore.address}</p>
+                  )}
                 </div>
               </div>
-            </OverlayView>
+            </InfoWindow>
+          </>
+        )}
+
+        {/* 클릭한 일반 장소 정보창 (추천된 장소가 아닌 경우) */}
+        {clickedLocation && !selectedStore && !showDirectionsPanel && placeDetails && (
+          <>
+            <InfoWindow
+              position={{ lat: clickedLocation.lat, lng: clickedLocation.lng }}
+              options={{
+                pixelOffset: new google.maps.Size(0, -40), // 마커 위로 40px 이동하여 마커를 가리지 않도록
+              }}
+              onCloseClick={() => {
+                setClickedLocation(null);
+                setPlaceDetails(null);
+              }}
+            >
+              <div className="p-0" style={{ maxWidth: '300px' }}>
+                {/* 이미지 슬라이더 */}
+                {placeDetails.photos && placeDetails.photos.length > 0 && (
+                  <div className="relative w-full h-40 bg-gray-200 overflow-hidden group">
+                    {/* 이미지 컨테이너 */}
+                    <div 
+                      className="flex transition-transform duration-300 ease-in-out h-full"
+                      style={{ transform: `translateX(-${infoWindowPhotoIndex * 100}%)` }}
+                    >
+                      {placeDetails.photos.slice(0, 5).map((photo, index) => (
+                        <div key={index} className="min-w-full h-full flex-shrink-0 relative">
+                          <img
+                            src={photo.getUrl({ maxWidth: 400, maxHeight: 300 })}
+                            alt={`${placeDetails.name} - 사진 ${index + 1}`}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 이전/다음 버튼 (여러 사진이 있을 때만 표시) */}
+                    {placeDetails.photos.length > 1 && (
+                      <>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const maxIndex = Math.min(4, placeDetails.photos!.length - 1);
+                            setInfoWindowPhotoIndex((prev) => 
+                              prev === 0 ? maxIndex : prev - 1
+                            );
+                          }}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-50"
+                          aria-label="이전 사진"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          </svg>
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const maxIndex = Math.min(4, placeDetails.photos!.length - 1);
+                            setInfoWindowPhotoIndex((prev) => 
+                              prev >= maxIndex ? 0 : prev + 1
+                            );
+                          }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-50"
+                          aria-label="다음 사진"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+
+                        {/* 사진 인디케이터 */}
+                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-50">
+                          {placeDetails.photos.slice(0, 5).map((_, index) => (
+                            <button
+                              key={index}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setInfoWindowPhotoIndex(index);
+                              }}
+                              className={`w-1.5 h-1.5 rounded-full transition-all ${
+                                index === infoWindowPhotoIndex 
+                                  ? 'bg-white w-4' 
+                                  : 'bg-white/50 hover:bg-white/75'
+                              }`}
+                              aria-label={`사진 ${index + 1}로 이동`}
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+                
+                {/* 텍스트 정보 */}
+                <div className="p-3">
+                  <h3 className="font-bold text-base mb-1">{placeDetails.name || '선택한 위치'}</h3>
+                  {placeDetails.formattedAddress && (
+                    <p className="text-xs text-gray-500 mb-2">{placeDetails.formattedAddress}</p>
+                  )}
+                  {placeDetails.rating && (
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs text-gray-600">⭐ {placeDetails.rating}</span>
+                      {placeDetails.userRatingsTotal && (
+                        <span className="text-xs text-gray-500">({placeDetails.userRatingsTotal}개 리뷰)</span>
+                      )}
+                    </div>
+                  )}
+                  {placeDetails.priceLevel !== undefined && (
+                    <p className="text-xs text-gray-600 mb-1">
+                      가격: {'$'.repeat(placeDetails.priceLevel + 1)}
+                    </p>
+                  )}
+                  {placeDetails.openingHours?.openNow !== undefined && (
+                    <p className="text-xs text-gray-600">
+                      {placeDetails.openingHours.openNow ? '🟢 영업 중' : '🔴 영업 종료'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </InfoWindow>
           </>
         )}
 

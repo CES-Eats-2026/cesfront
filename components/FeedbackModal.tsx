@@ -121,8 +121,8 @@ export default function FeedbackModal({ isOpen, onClose, onSubmit }: FeedbackMod
               id="feedback"
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}
-              placeholder="CESEats는 전시장 일정 중 빠른 선택을 돕기 위해 만들어졌어요.
-실제 사용하면서 느낀 점을 자유롭게 남겨주세요."
+              placeholder="바쁜 CES 2026 일정 중 식사 고민을 줄이기 위해 만든 CESEats예요. 서비스를
+사용하면서 느낀 점을 자유롭게 적어주세요!"
               rows={6}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
               disabled={isSubmitting}

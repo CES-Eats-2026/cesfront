@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Store } from '@/types';
-import { getGoogleMapsDeepLink } from '@/lib/api';
+import { getGoogleMapsDeepLink, incrementPlaceView } from '@/lib/api';
 
 interface StoreCardProps {
   store: Store;
+  isSelected?: boolean; // 선택되었는지 여부
 }
 
-export default function StoreCard({ store }: StoreCardProps) {
+export default function StoreCard({ store, isSelected = false }: StoreCardProps) {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
@@ -20,6 +21,9 @@ export default function StoreCard({ store }: StoreCardProps) {
   };
 
   const handleNavigate = () => {
+    // 조회수 증가 (카드 클릭 시)
+    incrementPlaceView(store.id);
+    
     const deepLink = getGoogleMapsDeepLink(store.latitude, store.longitude);
     window.open(deepLink, '_blank');
   };
@@ -69,6 +73,23 @@ export default function StoreCard({ store }: StoreCardProps) {
     touchEndX.current = null;
   };
 
+  // 선택되었을 때 이미지 슬라이더 자동 이동
+  useEffect(() => {
+    if (isSelected && store.photos && store.photos.length > 1) {
+      // 선택되면 이미지 슬라이더를 자동으로 순환
+      const interval = setInterval(() => {
+        setCurrentPhotoIndex((prev) => {
+          return (prev + 1) % store.photos!.length;
+        });
+      }, 2000); // 2초마다 다음 이미지로
+
+      return () => clearInterval(interval);
+    } else if (!isSelected) {
+      // 선택 해제되면 첫 번째 이미지로 리셋
+      setCurrentPhotoIndex(0);
+    }
+  }, [isSelected, store.photos]);
+
   return (
     <div
       className="bg-white rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow overflow-hidden"
@@ -107,7 +128,7 @@ export default function StoreCard({ store }: StoreCardProps) {
               {/* 이전 버튼 */}
               <button
                 onClick={handlePrevPhoto}
-                className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity z-50"
                 aria-label="이전 사진"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -118,7 +139,7 @@ export default function StoreCard({ store }: StoreCardProps) {
               {/* 다음 버튼 */}
               <button
                 onClick={handleNextPhoto}
-                className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity z-50"
                 aria-label="다음 사진"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -127,7 +148,7 @@ export default function StoreCard({ store }: StoreCardProps) {
               </button>
 
               {/* 사진 인디케이터 (하단 점) */}
-              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-50">
                 {store.photos.map((_, index) => (
                   <button
                     key={index}

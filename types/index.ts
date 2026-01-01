@@ -1,4 +1,4 @@
-export type StoreType = 'restaurant' | 'cafe' | 'fastfood' | 'bar' | 'all';
+export type StoreType = 'restaurant' | 'cafe' | 'fastfood' | 'bar' | 'food' | 'bakery' | 'meal_delivery' | 'night_club' | 'liquor_store' | 'store' | 'shopping_mall' | 'supermarket' | 'convenience_store' | 'other' | 'all';
 
 export type TimeOption = number; // 분 단위 (15-90)
 
@@ -15,6 +15,7 @@ export interface Store {
   address?: string;
   photos?: string[]; // 사진 URL 리스트
   reviews?: Review[]; // 리뷰 리스트
+  viewCount?: number; // 조회수
 }
 
 export interface Review {

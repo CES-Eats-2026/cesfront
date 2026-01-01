@@ -33,6 +33,30 @@ export function getGoogleMapsDeepLink(latitude: number, longitude: number): stri
   return `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
 }
 
+/**
+ * 장소 조회수 증가 API 호출
+ * @param placeId Google Places place_id
+ */
+export async function incrementPlaceView(placeId: string): Promise<void> {
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/places/${placeId}/view`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      console.error('Failed to increment view count:', response.status);
+    }
+  } catch (error) {
+    console.error('Error incrementing view count:', error);
+    // 조회수 증가 실패는 사용자에게 보이지 않도록 조용히 처리
+  }
+}
+
 export async function sendFeedbackToDiscord(feedback: string, image: File | null): Promise<void> {
   const webhookUrl = process.env.NEXT_PUBLIC_DISCORD_WEBHOOK_URL;
   

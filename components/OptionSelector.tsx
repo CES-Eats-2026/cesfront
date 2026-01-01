@@ -47,6 +47,16 @@ export default function OptionSelector({
     { value: 'cafe', label: '카페' },
     { value: 'fastfood', label: '패스트푸드' },
     { value: 'bar', label: '바' },
+    { value: 'food', label: '음식점' },
+    { value: 'bakery', label: '베이커리' },
+    { value: 'meal_delivery', label: '배달음식' },
+    { value: 'night_club', label: '나이트클럽' },
+    { value: 'liquor_store', label: '주류판매점' },
+    { value: 'store', label: '상점' },
+    { value: 'shopping_mall', label: '쇼핑몰' },
+    { value: 'supermarket', label: '슈퍼마켓' },
+    { value: 'convenience_store', label: '편의점' },
+    { value: 'other', label: '기타' },
   ];
 
   // timeOption이 외부에서 변경되면 슬라이더 값도 업데이트
