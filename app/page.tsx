@@ -567,9 +567,9 @@ export default function Home() {
             bottom: isDesktop ? 'auto' : 0,
             left: isDesktop ? 'auto' : 0,
             right: isDesktop ? 'auto' : 0,
-            width: isDesktop ? 'auto' : '100%',
+            width: isDesktop ? '500px' : '100%',
             zIndex: isDesktop ? 'auto' : 20,
-            maxHeight: isDesktop ? 'none' : `calc(100vh - ${maxPanelOffset}px)`
+            maxHeight: isDesktop ? '100%' : `calc(100vh - ${maxPanelOffset}px)`
           }}
         >
           
