@@ -26,7 +26,8 @@ export default function Home() {
   const [dragStartHeight, setDragStartHeight] = useState(0);
   const [panelOffset, setPanelOffset] = useState(0); // 패널 오프셋 (위아래 이동)
   const [dragDirection, setDragDirection] = useState<'up' | 'down' | null>(null); // 드래그 방향
-  const [maxPanelOffset, setMaxPanelOffset] = useState(0); // 패널의 최대 오프셋 (드래그 핸들이 보이도록)
+  const [maxPanelOffset, setMaxPanelOffset] = useState(64); // 패널의 최대 오프셋 (회색 영역과 지도가 만나는 부분까지)
+  const headerRef = useRef<HTMLDivElement | null>(null); // 헤더 ref
   const storeRefs = useRef<{ [key: string]: HTMLDivElement | null }>({}); // 각 상점 카드의 ref
   const optionsContainerRef = useRef<HTMLDivElement | null>(null); // 옵션 컨테이너 ref
   const stickyOptionsRef = useRef<HTMLDivElement | null>(null); // sticky 옵션 영역 ref
@@ -68,12 +69,19 @@ export default function Home() {
     checkIsDesktop();
     window.addEventListener('resize', checkIsDesktop);
     
-    // 패널의 최대 오프셋 계산 (드래그 핸들이 항상 보이도록)
+    // 패널의 최대 오프셋 계산 (회색 영역과 지도가 만나는 부분까지만)
     const updateMaxPanelOffset = () => {
-      const dragHandleHeight = 48; // 드래그 핸들 높이
-      setMaxPanelOffset(window.innerHeight - dragHandleHeight);
+      if (headerRef.current) {
+        const headerHeight = headerRef.current.offsetHeight;
+        // 패널이 헤더 아래까지만 내려가도록 제한 (회색과 지도가 만나는 부분)
+        setMaxPanelOffset(headerHeight);
+      } else {
+        // 헤더가 아직 마운트되지 않았으면 기본값 사용
+        setMaxPanelOffset(64);
+      }
     };
-    updateMaxPanelOffset();
+    // 초기 설정 (다음 틱에 실행하여 헤더가 마운트된 후 측정)
+    setTimeout(updateMaxPanelOffset, 0);
     window.addEventListener('resize', updateMaxPanelOffset);
     
     return () => {
@@ -485,6 +493,7 @@ export default function Home() {
       <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       {/* 헤더 */}
       <div 
+        ref={headerRef}
         className="bg-white border-b border-gray-200 px-4 py-3 flex-shrink-0 relative z-10" 
         style={{ 
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)'
@@ -521,7 +530,7 @@ export default function Home() {
 
       {/* 메인 컨텐츠 영역 - 모바일: 세로 배치, 데스크톱: 가로 배치 */}
       <div className="flex-1 relative min-h-0 flex flex-col lg:flex-row">
-        {/* 지도 영역 */}
+        {/* 지도 영역 - 헤더 아래부터 전체 높이까지 */}
         <div className="flex-1 relative min-h-0 lg:min-w-0">
           <GoogleMapComponent
             center={currentLocation}
@@ -548,12 +557,19 @@ export default function Home() {
 
         {/* 옵션 선택 및 장소 목록 영역 - 모바일: 아래, 데스크톱: 오른쪽 */}
         <div 
-          className="bg-white border-t lg:border-t-0 lg:border-l border-gray-200 flex-shrink-0 relative lg:rounded-none rounded-t-2xl lg:w-[500px] lg:shadow-none lg:translate-y-0"
+          className="bg-white border-t lg:border-t-0 lg:border-l border-gray-200 flex-shrink-0 lg:rounded-none rounded-t-2xl lg:w-[500px] lg:shadow-none lg:translate-y-0"
           style={{ 
             boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.15)',
             transform: isDesktop ? 'none' : `translateY(${Math.min(panelOffset, maxPanelOffset)}px)`,
             transition: isDesktop ? 'none' : isDragging ? 'none' : 'transform 0.8s cubic-bezier(0.34, 1.8, 0.64, 1)', // 강한 반동 효과
-            overflow: 'visible' // 드래그 핸들이 보이도록
+            overflow: 'visible', // 드래그 핸들이 보이도록
+            position: isDesktop ? 'relative' : 'absolute',
+            bottom: isDesktop ? 'auto' : 0,
+            left: isDesktop ? 'auto' : 0,
+            right: isDesktop ? 'auto' : 0,
+            width: isDesktop ? 'auto' : '100%',
+            zIndex: isDesktop ? 'auto' : 20,
+            maxHeight: isDesktop ? 'none' : `calc(100vh - ${maxPanelOffset}px)`
           }}
         >
           
