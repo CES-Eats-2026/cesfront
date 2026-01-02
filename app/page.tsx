@@ -25,6 +25,8 @@ export default function Home() {
   const [dragStartY, setDragStartY] = useState(0);
   const [dragStartHeight, setDragStartHeight] = useState(0);
   const [panelOffset, setPanelOffset] = useState(0); // 패널 오프셋 (위아래 이동)
+  const [dragDirection, setDragDirection] = useState<'up' | 'down' | null>(null); // 드래그 방향
+  const [maxPanelOffset, setMaxPanelOffset] = useState(0); // 패널의 최대 오프셋 (드래그 핸들이 보이도록)
   const storeRefs = useRef<{ [key: string]: HTMLDivElement | null }>({}); // 각 상점 카드의 ref
   const optionsContainerRef = useRef<HTMLDivElement | null>(null); // 옵션 컨테이너 ref
   const stickyOptionsRef = useRef<HTMLDivElement | null>(null); // sticky 옵션 영역 ref
@@ -65,7 +67,19 @@ export default function Home() {
     };
     checkIsDesktop();
     window.addEventListener('resize', checkIsDesktop);
-    return () => window.removeEventListener('resize', checkIsDesktop);
+    
+    // 패널의 최대 오프셋 계산 (드래그 핸들이 항상 보이도록)
+    const updateMaxPanelOffset = () => {
+      const dragHandleHeight = 48; // 드래그 핸들 높이
+      setMaxPanelOffset(window.innerHeight - dragHandleHeight);
+    };
+    updateMaxPanelOffset();
+    window.addEventListener('resize', updateMaxPanelOffset);
+    
+    return () => {
+      window.removeEventListener('resize', checkIsDesktop);
+      window.removeEventListener('resize', updateMaxPanelOffset);
+    };
   }, []);
 
   const fetchRecommendations = useCallback(async () => {
@@ -318,6 +332,7 @@ export default function Home() {
   // 드래그 시작 (마우스 및 터치 지원)
   const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
     setIsDragging(true);
+    setDragDirection(null); // 드래그 방향 초기화
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     setDragStartY(clientY);
     // 패널이 아래로 내려가 있으면 panelOffset을 기준으로, 아니면 optionsHeight를 기준으로
@@ -335,12 +350,21 @@ export default function Home() {
 
     const handleMove = (e: MouseEvent | TouchEvent) => {
       const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-      const deltaY = dragStartY - clientY; // 위로 드래그하면 양수
+      const deltaY = dragStartY - clientY; // 위로 드래그하면 양수, 아래로 드래그하면 음수
+      
+      // 드래그 방향 감지 (10px 이상 움직였을 때만)
+      if (Math.abs(deltaY) > 10) {
+        setDragDirection(deltaY > 0 ? 'up' : 'down');
+      }
       
       // 패널이 아래로 내려가 있는 경우 (panelOffset > 0)
       if (panelOffset > 0) {
-        // 위로 드래그하면 패널을 위로 올리기 (상단 바까지 올라갈 수 있도록 음수 허용)
-        const newOffset = Math.max(-headerHeight, panelOffset - deltaY);
+        // 위로 드래그하면 패널을 위로 올리기, 아래로 드래그하면 패널을 더 아래로 내리기
+        // 드래그 핸들(토글 바)이 항상 보이도록 최대 오프셋 제한
+        // translateY는 양수일 때 아래로 이동하므로, 드래그 핸들만 보이도록 제한
+        // 패널이 화면 밖으로 완전히 나가지 않도록 패널의 최소 높이를 고려
+        // 패널이 화면 밖으로 나가지 않도록 최대 오프셋 제한
+        const newOffset = Math.max(-headerHeight, Math.min(maxPanelOffset, panelOffset - deltaY));
         setPanelOffset(newOffset);
         // 패널이 완전히 위로 올라가면 높이 조절 모드로 전환
         if (newOffset <= 0) {
@@ -350,9 +374,14 @@ export default function Home() {
         // 패널이 위에 있는 경우 높이 조절 또는 상단 바까지 올리기
         const newHeight = dragStartHeight + deltaY;
         
-        // 상단 바까지 올라가려면 panelOffset을 음수로 설정
-        if (newHeight < 200) {
-          // 높이가 너무 작아지면 panelOffset으로 전환하여 상단 바까지 올리기
+        // 아래로 드래그하면 패널을 아래로 내리기
+        if (deltaY < 0 && newHeight > window.innerHeight * 0.5) {
+          // 패널을 아래로 내리기 시작
+          const offsetFromTop = newHeight - 200;
+          setPanelOffset(Math.min(maxPanelOffset, Math.max(0, offsetFromTop)));
+          setOptionsHeight(200);
+        } else if (newHeight < 200) {
+          // 상단 바까지 올라가려면 panelOffset을 음수로 설정
           const offsetFromTop = newHeight - 200; // 음수값
           setPanelOffset(Math.max(-headerHeight, offsetFromTop));
           setOptionsHeight(200);
@@ -366,6 +395,53 @@ export default function Home() {
 
     const handleEnd = () => {
       setIsDragging(false);
+      
+      // 드래그 종료 시 자동 스냅 (반동 효과)
+      // 드래그 방향을 우선적으로 고려
+      if (dragDirection === 'down') {
+        // 아래로 드래그한 경우 - 아래로 내리기 (드래그 핸들만 보이도록)
+        setPanelOffset(maxPanelOffset);
+        } else if (dragDirection === 'up') {
+        // 위로 드래그한 경우 - 위로 올리기
+        if (panelOffset > 0) {
+          const threshold = window.innerHeight * 0.3; // 30% 지점
+          if (panelOffset < threshold) {
+            setPanelOffset(0);
+          } else {
+            // 충분히 아래에 있으면 그대로 유지
+            setPanelOffset(maxPanelOffset);
+          }
+        } else if (panelOffset < 0) {
+          const threshold = -headerHeight * 0.5;
+          if (panelOffset > threshold) {
+            setPanelOffset(0);
+          } else {
+            setPanelOffset(-headerHeight);
+          }
+        } else {
+          // 원래 위치에서 위로 올리기
+          setPanelOffset(-headerHeight);
+        }
+      } else {
+        // 드래그 방향이 없으면 위치 기반 스냅
+        if (panelOffset > 0) {
+          const threshold = window.innerHeight * 0.4;
+          if (panelOffset < threshold) {
+            setPanelOffset(0);
+          } else {
+            setPanelOffset(maxPanelOffset);
+          }
+        } else if (panelOffset < 0) {
+          const threshold = -headerHeight * 0.5;
+          if (panelOffset > threshold) {
+            setPanelOffset(0);
+          } else {
+            setPanelOffset(-headerHeight);
+          }
+        }
+      }
+      
+      setDragDirection(null); // 드래그 방향 초기화
     };
 
     window.addEventListener('mousemove', handleMove);
@@ -391,9 +467,10 @@ export default function Home() {
 
   // 위아래 이동 핸들러 (반동 효과)
   const handleToggle = () => {
-    if (panelOffset === 0) {
+    // 드래그 핸들(토글 바)이 항상 보이도록 최대 오프셋 제한
+    if (panelOffset === 0 || panelOffset < 0) {
       // 아래로 이동 (일부만 보이도록 - 드래그 핸들만 보임)
-      setPanelOffset(window.innerHeight - 60); // 드래그 핸들 높이만 남김
+      setPanelOffset(maxPanelOffset);
     } else {
       // 위로 이동 (원래 위치로)
       setPanelOffset(0);
@@ -474,8 +551,8 @@ export default function Home() {
           className="bg-white border-t lg:border-t-0 lg:border-l border-gray-200 flex-shrink-0 relative lg:rounded-none rounded-t-2xl lg:w-[500px] lg:shadow-none lg:translate-y-0"
           style={{ 
             boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.15)',
-            transform: isDesktop ? 'none' : `translateY(${panelOffset}px)`,
-            transition: isDesktop ? 'none' : 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)', // 반동 효과
+            transform: isDesktop ? 'none' : `translateY(${Math.min(panelOffset, maxPanelOffset)}px)`,
+            transition: isDesktop ? 'none' : isDragging ? 'none' : 'transform 0.8s cubic-bezier(0.34, 1.8, 0.64, 1)', // 강한 반동 효과
             overflow: 'visible' // 드래그 핸들이 보이도록
           }}
         >
@@ -517,7 +594,8 @@ export default function Home() {
                   WebkitOverflowScrolling: 'touch', 
                   position: 'relative',
                   paddingTop: '0px', // 상단 바 바로 아래에서 시작
-                  scrollPaddingTop: '0px' // 스크롤 시 상단 바 바로 아래에 위치
+                  scrollPaddingTop: '0px', // 스크롤 시 상단 바 바로 아래에 위치
+                  paddingBottom: '100vh' // 제목이 맨 아래까지 스크롤될 수 있도록 충분한 여백
                 }}
                 onScroll={(e) => {
                   const target = e.target as HTMLElement;
@@ -544,7 +622,7 @@ export default function Home() {
               </div>
               
               {/* 장소 목록 */}
-              <div className="bg-gray-50 px-4 py-4">
+              <div className="bg-gray-50 px-4 py-4" style={{ minHeight: 'calc(100vh + 200px)' }}>
                 {loading && (
                   <div className="space-y-3">
                     {/* 스켈레톤 UI - 로딩 중 카드 미리보기 */}

@@ -1414,7 +1414,7 @@ export default function GoogleMapComponent({
               className="absolute bg-white rounded-lg shadow-lg px-4 py-2 border border-blue-200 z-50 animate-fade-in-out"
               style={{ 
                 top: 'calc(100% + 12px)',
-                right: '0px',
+                right: '-20px',
                 transform: 'none'
               }}
             >
