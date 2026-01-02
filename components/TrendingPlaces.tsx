@@ -18,6 +18,8 @@ interface RankedStore extends Store {
 export default function TrendingPlaces({ stores, onPlaceClick, isCollapsed, onCollapseChange }: TrendingPlacesProps) {
   const [previousViewCounts, setPreviousViewCounts] = useState<{ [key: string]: number }>({});
   const [internalExpanded, setInternalExpanded] = useState(true); // 내부 접기/펼치기 상태
+  const [currentIndex, setCurrentIndex] = useState(0); // 현재 표시할 항목 인덱스
+  const [isSliding, setIsSliding] = useState(false); // 슬라이드 애니메이션 상태
   
   // 외부에서 제어되는 경우 외부 상태 사용, 아니면 내부 상태 사용
   const isExpanded = isCollapsed !== undefined ? !isCollapsed : internalExpanded;
@@ -164,58 +166,102 @@ export default function TrendingPlaces({ stores, onPlaceClick, isCollapsed, onCo
     return () => clearInterval(interval);
   }, [stores]);
 
+  // 자동 슬라이드: 3초마다 다음 항목으로 전환 (아래에서 위로)
+  useEffect(() => {
+    if (topStores.length === 0 || !isExpanded || topStores.length <= 1) return;
+    
+    const interval = setInterval(() => {
+      // 슬라이드 아웃 (위로 사라짐)
+      setIsSliding(true);
+      
+      // 애니메이션 후 다음 항목으로 전환
+      setTimeout(() => {
+        setCurrentIndex((prev) => (prev + 1) % topStores.length);
+        // 슬라이드 인 (아래에서 나타남) - 약간의 지연 후
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            setIsSliding(false);
+          }, 10);
+        });
+      }, 350); // 슬라이드 아웃 시간
+    }, 3000); // 3초마다 전환
+
+    return () => clearInterval(interval);
+  }, [topStores.length, isExpanded]);
+
+  // topStores가 변경되면 인덱스 리셋
+  useEffect(() => {
+    setCurrentIndex(0);
+  }, [topStores.length]);
+
   if (topStores.length === 0) {
     return null;
   }
 
+  const currentStore = topStores[currentIndex];
+
   return (
-    <div className="absolute top-4 left-4 z-10 bg-white rounded-lg shadow-lg max-w-xs overflow-hidden">
+    <div className="flex items-center gap-2 relative ml-4">
       {/* 헤더 - 클릭 가능 */}
       <div 
-        className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+        className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-          <h3 className="text-sm font-bold text-gray-900">실시간 조회수 급상승</h3>
-        </div>
-        <svg 
-          className={`w-4 h-4 text-gray-600 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-          fill="none" 
-          stroke="currentColor" 
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+        <h3 className="text-xs font-semibold text-gray-700 whitespace-nowrap">실시간 급상승</h3>
       </div>
       
-      {/* 내용 - 접기/펼치기 */}
-      {isExpanded && (
-        <div className="px-4 pb-4 space-y-2">
-          {topStores.map((store) => (
-            <div
-              key={store.id}
-              className="flex items-center justify-between p-2 rounded hover:bg-gray-50 transition-colors cursor-pointer"
-              onClick={(e) => {
-                e.stopPropagation(); // 헤더 클릭 이벤트 전파 방지
-                if (onPlaceClick) {
-                  onPlaceClick(store);
-                }
+      {/* 내용 - 자동 슬라이드 */}
+      {isExpanded && currentStore && (
+        <div className="absolute top-full right-0 mt-2 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-20 min-w-[280px] max-w-[320px]">
+          <div className="relative overflow-hidden" style={{ minHeight: '60px' }}>
+            <div 
+              className="px-4 py-3 transition-all ease-in-out"
+              style={{
+                transform: isSliding ? 'translateY(-100%)' : 'translateY(0)',
+                opacity: isSliding ? 0 : 1,
+                transitionDuration: '350ms',
               }}
             >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-gray-700">#{store.currentRank}</span>
-                  <span className="text-sm font-medium text-gray-900 truncate">{store.name}</span>
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs font-medium text-gray-600">
-                    {getTrendingMessage(store.currentRank, store.viewCount ?? 0, store.viewCountIncrease)}
-                  </span>
+              <div
+                className="flex items-center justify-between rounded hover:bg-gray-50 transition-colors cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation(); // 헤더 클릭 이벤트 전파 방지
+                  if (onPlaceClick) {
+                    onPlaceClick(currentStore);
+                  }
+                }}
+              >
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-blue-600 flex-shrink-0">#{currentStore.currentRank}</span>
+                    <span className="text-sm font-medium text-gray-900 truncate block overflow-hidden text-ellipsis whitespace-nowrap">{currentStore.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-xs text-gray-600 truncate">
+                      {getTrendingMessage(currentStore.currentRank, currentStore.viewCount ?? 0, currentStore.viewCountIncrease)}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
-          ))}
+          </div>
+          
+          {/* 인디케이터 (3개 점) */}
+          {topStores.length > 1 && (
+            <div className="flex justify-center gap-1.5 pb-2">
+              {topStores.map((_, index) => (
+                <div
+                  key={index}
+                  className={`h-1.5 rounded-full transition-all ${
+                    index === currentIndex 
+                      ? 'w-6 bg-blue-600' 
+                      : 'w-1.5 bg-gray-300'
+                  }`}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

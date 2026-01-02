@@ -98,81 +98,101 @@ export default function StoreCard({ store, isSelected = false, onViewCountUpdate
     <div
       className="bg-white rounded-xl shadow-md border border-gray-200 hover:shadow-lg transition-shadow overflow-hidden"
     >
-      {/* 사진 슬라이드 */}
-      {store.photos && store.photos.length > 0 && (
-        <div 
-          className="relative w-full h-48 bg-gray-200 overflow-hidden group"
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-        >
-          {/* 이미지 컨테이너 */}
-          <div 
-            className="flex transition-transform duration-300 ease-in-out h-full"
-            style={{ transform: `translateX(-${currentPhotoIndex * 100}%)` }}
-          >
-            {store.photos.map((photo, index) => (
-              <div key={index} className="min-w-full h-full flex-shrink-0 relative">
-                <img
-                  src={photo}
-                  alt={`${store.name} - 사진 ${index + 1}`}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    // 이미지 로드 실패 시 숨김
-                    (e.target as HTMLImageElement).style.display = 'none';
-                  }}
-                />
-              </div>
-            ))}
-          </div>
-
-          {/* 이전/다음 버튼 (여러 사진이 있을 때만 표시) */}
-          {store.photos.length > 1 && (
-            <>
-              {/* 이전 버튼 */}
-              <button
-                onClick={handlePrevPhoto}
-                className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity z-50"
-                aria-label="이전 사진"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-
-              {/* 다음 버튼 */}
-              <button
-                onClick={handleNextPhoto}
-                className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity z-50"
-                aria-label="다음 사진"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-
-              {/* 사진 인디케이터 (하단 점) */}
-              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-50">
-                {store.photos.map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCurrentPhotoIndex(index);
+      {/* 사진 슬라이드 - 이미지가 없어도 동일한 높이 유지 */}
+      <div 
+        className="relative w-full h-48 bg-gray-200 overflow-hidden group"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        {store.photos && store.photos.length > 0 ? (
+          <>
+            {/* 이미지 컨테이너 */}
+            <div 
+              className="flex transition-transform duration-300 ease-in-out h-full"
+              style={{ transform: `translateX(-${currentPhotoIndex * 100}%)` }}
+            >
+              {store.photos.map((photo, index) => (
+                <div key={index} className="min-w-full h-full flex-shrink-0 relative">
+                  <img
+                    src={photo}
+                    alt={`${store.name} - 사진 ${index + 1}`}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // 이미지 로드 실패 시 placeholder 표시
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                      const placeholder = target.parentElement?.querySelector('.image-placeholder');
+                      if (placeholder) {
+                        (placeholder as HTMLElement).style.display = 'flex';
+                      }
                     }}
-                    className={`w-2 h-2 rounded-full transition-all ${
-                      index === currentPhotoIndex
-                        ? 'bg-white w-6'
-                        : 'bg-white/50 hover:bg-white/75'
-                    }`}
-                    aria-label={`사진 ${index + 1}로 이동`}
                   />
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      )}
+                  {/* 이미지 로드 실패 시 표시될 placeholder */}
+                  <div className="image-placeholder absolute inset-0 bg-gray-300 flex items-center justify-center" style={{ display: 'none' }}>
+                    <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 이전/다음 버튼 (여러 사진이 있을 때만 표시) */}
+            {store.photos.length > 1 && (
+              <>
+                {/* 이전 버튼 */}
+                <button
+                  onClick={handlePrevPhoto}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity z-50"
+                  aria-label="이전 사진"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+
+                {/* 다음 버튼 */}
+                <button
+                  onClick={handleNextPhoto}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity z-50"
+                  aria-label="다음 사진"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+
+                {/* 사진 인디케이터 (하단 점) */}
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-50">
+                  {store.photos.map((_, index) => (
+                    <button
+                      key={index}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCurrentPhotoIndex(index);
+                      }}
+                      className={`w-2 h-2 rounded-full transition-all ${
+                        index === currentPhotoIndex
+                          ? 'bg-white w-6'
+                          : 'bg-white/50 hover:bg-white/75'
+                      }`}
+                      aria-label={`사진 ${index + 1}로 이동`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </>
+        ) : (
+          /* 이미지가 없을 때 placeholder */
+          <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+            <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+        )}
+      </div>
       
       <div className="p-5">
         <div className="flex justify-between items-start mb-3">

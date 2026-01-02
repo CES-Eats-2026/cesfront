@@ -2,7 +2,8 @@
 
 import { useMemo, useEffect, useRef, useCallback, useState } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow, OverlayView } from '@react-google-maps/api';
-import { Store, StoreType } from '@/types';
+import { Store, StoreType, TimeOption } from '@/types';
+import { getGoogleMapsDeepLink } from '@/lib/api';
 
 interface GoogleMapProps {
   center: { lat: number; lng: number };
@@ -14,6 +15,10 @@ interface GoogleMapProps {
   onAddStore?: (store: Store) => void; // 새로운 장소를 stores 배열에 추가하는 콜백
   type?: StoreType; // 유형 필터
   radiusKm?: number; // 반경 (km)
+  timeOption?: TimeOption; // 시간 옵션
+  onTimeChange?: (time: TimeOption) => void; // 시간 변경 핸들러
+  onTypeChange?: (type: StoreType) => void; // 유형 변경 핸들러
+  autoCollapse?: boolean; // 자동 접기 여부
 }
 
 interface ClickedLocation {
@@ -59,6 +64,10 @@ export default function GoogleMapComponent({
   onAddStore,
   type = 'all',
   radiusKm = 2,
+  timeOption = 24,
+  onTimeChange,
+  onTypeChange,
+  autoCollapse = false,
 }: GoogleMapProps) {
   const mapRef = useRef<google.maps.Map | null>(null);
   const circleRef = useRef<google.maps.Circle | null>(null);
@@ -77,6 +86,85 @@ export default function GoogleMapComponent({
   const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
   
+  // 거리 슬라이더 상태
+  const [sliderValue, setSliderValue] = useState(1000); // 초기값 1km
+  const typeScrollRef = useRef<HTMLDivElement | null>(null);
+  
+  // 실시간 급상승 슬라이드 상태
+  const [trendingIndex, setTrendingIndex] = useState(0);
+  const [isTrendingSliding, setIsTrendingSliding] = useState(false);
+  
+  // 접기/펼치기 상태
+  const [isExpanded, setIsExpanded] = useState(true);
+  const isExpandedRef = useRef(isExpanded);
+  
+  // 랜덤 메시지 표시 상태
+  const [showRandomMessage, setShowRandomMessage] = useState(false);
+  const messageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // isExpanded 상태를 ref에 동기화
+  useEffect(() => {
+    isExpandedRef.current = isExpanded;
+  }, [isExpanded]);
+  
+  // autoCollapse prop이 변경되면 자동으로 접기
+  useEffect(() => {
+    if (autoCollapse) {
+      setIsExpanded(false);
+    }
+  }, [autoCollapse]);
+  
+  // 접혀 있을 때 랜덤 메시지 표시 (반복)
+  useEffect(() => {
+    if (!isExpanded) {
+      const showMessage = () => {
+        // 접혀있는지 확인 (최신 상태)
+        if (!isExpandedRef.current) {
+          // 랜덤한 시간 간격으로 메시지 표시 (3-8초 사이)
+          const randomDelay = Math.random() * 5000 + 3000; // 3000ms ~ 8000ms
+          
+          messageTimeoutRef.current = setTimeout(() => {
+            // 다시 확인 (타이머 실행 중 상태가 변경되었을 수 있음)
+            if (!isExpandedRef.current) {
+              setShowRandomMessage(true);
+              
+              // 2-4초 후 메시지 숨김
+              const hideDelay = Math.random() * 2000 + 2000; // 2000ms ~ 4000ms
+              setTimeout(() => {
+                setShowRandomMessage(false);
+                // 메시지가 사라진 후 다시 랜덤하게 나타나도록 재귀 호출
+                if (!isExpandedRef.current) {
+                  showMessage();
+                }
+              }, hideDelay);
+            }
+          }, randomDelay);
+        }
+      };
+      
+      // 첫 메시지 표시 시작
+      showMessage();
+    } else {
+      // 펼쳐져 있으면 메시지 숨김 및 타이머 정리
+      setShowRandomMessage(false);
+      if (messageTimeoutRef.current) {
+        clearTimeout(messageTimeoutRef.current);
+        messageTimeoutRef.current = null;
+      }
+    }
+    
+    return () => {
+      if (messageTimeoutRef.current) {
+        clearTimeout(messageTimeoutRef.current);
+        messageTimeoutRef.current = null;
+      }
+    };
+  }, [isExpanded]);
+  
+  // 사용자 방향 (heading) 상태
+  const [userHeading, setUserHeading] = useState<number | null>(null);
+  
+  
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: apiKey,
@@ -92,6 +180,7 @@ export default function GoogleMapComponent({
       streetViewControl: false,
       mapTypeControl: false,
       fullscreenControl: false,
+      gestureHandling: 'greedy', // 한 손가락으로도 지도 드래그 가능
     }),
     []
   );
@@ -167,15 +256,15 @@ export default function GoogleMapComponent({
     }
   }, [mapCenter, mapZoom, selectedStore]);
 
-  // selectedStore가 변경되면 해당 위치로 지도 이동
+  // selectedStore가 변경되면 해당 위치로 지도 이동 및 줌 인
   useEffect(() => {
     if (!mapRef.current || !isLoaded || !selectedStore) return;
 
     const storePosition = { lat: selectedStore.latitude, lng: selectedStore.longitude };
     
-    // 지도가 해당 위치로 이동
+    // 지도가 해당 위치로 이동 및 줌 인
     mapRef.current.panTo(storePosition);
-    mapRef.current.setZoom(16); // 상세 보기 줌 레벨
+    mapRef.current.setZoom(17); // 더 가까운 줌 레벨
   }, [selectedStore, isLoaded]);
 
   // 거리 계산 함수 (Haversine formula)
@@ -190,6 +279,129 @@ export default function GoogleMapComponent({
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c; // 거리 (km)
   }, []);
+
+  // 거리(미터)를 시간으로 변환: 도보 속도 5km/h 기준
+  const distanceToTime = (meters: number): number => {
+    return Math.round((meters / 5000) * 60);
+  };
+  
+  // 시간을 거리(미터)로 변환
+  const timeToDistance = (minutes: number): number => {
+    return Math.round((minutes / 60) * 5000);
+  };
+
+  // 실시간 급상승 상위 3개 계산
+  const trendingStores = useMemo(() => {
+    const storesWithIncrease = stores.map(store => {
+      const viewCountIncrease = store.viewCountIncrease ?? 0;
+      return { ...store, viewCountIncrease };
+    });
+    
+    // 조회수 증가량이 있는 것 우선, 없으면 전체 조회수 기준으로 정렬
+    return storesWithIncrease
+      .sort((a, b) => {
+        // 먼저 조회수 증가량으로 정렬 (증가량이 있는 것 우선)
+        if (b.viewCountIncrease !== a.viewCountIncrease) {
+          return b.viewCountIncrease - a.viewCountIncrease;
+        }
+        // 증가량이 같으면 전체 조회수로 정렬
+        const aCount = a.viewCount ?? 0;
+        const bCount = b.viewCount ?? 0;
+        return bCount - aCount;
+      })
+      .slice(0, 3); // 상위 3개만 선택 (필터 제거)
+  }, [stores]);
+
+  // timeOption이 변경되면 슬라이더 값 업데이트
+  useEffect(() => {
+    if (timeOption) {
+      const distance = Math.max(100, Math.min(2000, timeToDistance(timeOption)));
+      setSliderValue(distance);
+    }
+  }, [timeOption]);
+
+  // 실시간 급상승 자동 슬라이드 (3초마다 전환)
+  useEffect(() => {
+    if (trendingStores.length <= 1) return;
+    
+    const interval = setInterval(() => {
+      setIsTrendingSliding(true);
+      setTimeout(() => {
+        setTrendingIndex((prev) => (prev + 1) % trendingStores.length);
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            setIsTrendingSliding(false);
+          }, 10);
+        });
+      }, 350);
+    }, 3000); // 3초마다 전환
+    
+    return () => clearInterval(interval);
+  }, [trendingStores.length]);
+  
+  // trendingStores가 변경되면 인덱스 리셋
+  useEffect(() => {
+    setTrendingIndex(0);
+  }, [trendingStores.length]);
+
+  // 사용자 방향(나침반) 감지
+  useEffect(() => {
+    if (!isLoaded || typeof navigator === 'undefined' || !navigator.geolocation) {
+      return;
+    }
+
+    // Geolocation API로 방향 정보 가져오기
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        // heading 속성이 있으면 사용 (0-360도, 북쪽이 0도)
+        if (position.coords.heading !== null && position.coords.heading !== undefined) {
+          setUserHeading(position.coords.heading);
+        }
+      },
+      (error) => {
+        // 방향 정보를 가져올 수 없어도 계속 진행 (선택적 기능)
+        console.log('Heading not available:', error.message);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 0,
+      }
+    );
+
+    return () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+    };
+  }, [isLoaded]);
+
+  // 슬라이더 변경 핸들러
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const distanceMeters = parseInt(e.target.value);
+    setSliderValue(distanceMeters);
+    const timeMinutes = distanceToTime(distanceMeters);
+    onTimeChange?.(timeMinutes);
+  };
+
+  // 유형 옵션
+  const typeOptions: { value: StoreType; label: string }[] = [
+    { value: 'all', label: '전체' },
+    { value: 'restaurant', label: '레스토랑' },
+    { value: 'cafe', label: '카페' },
+    { value: 'fastfood', label: '패스트푸드' },
+    { value: 'bar', label: '바' },
+    { value: 'food', label: '음식점' },
+    { value: 'bakery', label: '베이커리' },
+    { value: 'meal_delivery', label: '배달음식' },
+    { value: 'night_club', label: '나이트클럽' },
+    { value: 'liquor_store', label: '주류판매점' },
+    { value: 'store', label: '상점' },
+    { value: 'shopping_mall', label: '쇼핑몰' },
+    { value: 'supermarket', label: '슈퍼마켓' },
+    { value: 'convenience_store', label: '편의점' },
+    { value: 'other', label: '기타' },
+  ];
 
   // 지도 클릭 시 InfoWindow 닫기 및 Google Maps 기본 마커 클릭 처리 (직접 리스너 등록)
   useEffect(() => {
@@ -793,17 +1005,24 @@ export default function GoogleMapComponent({
         onLoad={onLoad}
       >
 
-        {/* 현재 위치 마커 */}
+        {/* 현재 위치 마커 - 방향 표시 포함 */}
         <Marker
           position={center}
-          title="현재 위치"
+          title={userHeading !== null ? `현재 위치 (방향: ${Math.round(userHeading)}°)` : '현재 위치'}
           icon={{
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 8,
+            // 방향이 있으면 화살표 모양, 없으면 원형
+            path: userHeading !== null 
+              ? google.maps.SymbolPath.FORWARD_CLOSED_ARROW
+              : google.maps.SymbolPath.CIRCLE,
+            scale: userHeading !== null ? 7 : 8,
             fillColor: '#4285F4',
             fillOpacity: 1,
             strokeColor: '#ffffff',
             strokeWeight: 2,
+            rotation: userHeading !== null ? userHeading : undefined, // 방향 회전 (0-360도)
+            anchor: userHeading !== null 
+              ? new google.maps.Point(0, 0) // 화살표는 중심에서 회전
+              : undefined, // 원형은 anchor 불필요
           }}
         />
 
@@ -863,94 +1082,45 @@ export default function GoogleMapComponent({
                 setDirections(null);
               }}
             >
-              <div className="p-0" style={{ maxWidth: '300px' }}>
-                {/* 이미지 슬라이더 */}
-                {selectedStore.photos && selectedStore.photos.length > 0 && (
-                  <div className="relative w-full h-40 bg-gray-200 overflow-hidden group">
-                    {/* 이미지 컨테이너 */}
-                    <div 
-                      className="flex transition-transform duration-300 ease-in-out h-full"
-                      style={{ transform: `translateX(-${infoWindowPhotoIndex * 100}%)` }}
-                    >
-                      {selectedStore.photos.map((photo, index) => (
-                        <div key={index} className="min-w-full h-full flex-shrink-0 relative">
-                          <img
-                            src={photo}
-                            alt={`${selectedStore.name} - 사진 ${index + 1}`}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = 'none';
-                            }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* 이전/다음 버튼 (여러 사진이 있을 때만 표시) */}
-                    {selectedStore.photos.length > 1 && (
-                      <>
-                        {/* 이전 버튼 */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setInfoWindowPhotoIndex((prev) => 
-                              prev === 0 ? selectedStore.photos!.length - 1 : prev - 1
-                            );
-                          }}
-                          className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-50"
-                          aria-label="이전 사진"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                          </svg>
-                        </button>
-
-                        {/* 다음 버튼 */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setInfoWindowPhotoIndex((prev) => 
-                              prev === selectedStore.photos!.length - 1 ? 0 : prev + 1
-                            );
-                          }}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-50"
-                          aria-label="다음 사진"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </button>
-
-                        {/* 사진 인디케이터 (하단 점) */}
-                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-50">
-                          {selectedStore.photos.map((_, index) => (
-                            <button
-                              key={index}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setInfoWindowPhotoIndex(index);
-                              }}
-                              className={`w-1.5 h-1.5 rounded-full transition-all ${
-                                index === infoWindowPhotoIndex 
-                                  ? 'bg-white w-4' 
-                                  : 'bg-white/50 hover:bg-white/75'
-                              }`}
-                              aria-label={`사진 ${index + 1}로 이동`}
-                            />
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
+              <div className="p-3" style={{ maxWidth: '300px' }}>
+                {/* 장소명 */}
+                <h3 className="font-bold text-base mb-3">{selectedStore.name}</h3>
                 
-                {/* 텍스트 정보 */}
-                <div className="p-3">
-                  <h3 className="font-bold text-base mb-1">{selectedStore.name}</h3>
-                  <p className="text-xs text-gray-600 mb-2">{selectedStore.cesReason}</p>
-                  {selectedStore.address && (
-                    <p className="text-xs text-gray-500">{selectedStore.address}</p>
-                  )}
+                {/* 버튼 그룹 */}
+                <div className="flex gap-2">
+                  {/* 구글지도 길찾기 링크 */}
+                  <a
+                    href={getGoogleMapsDeepLink(selectedStore.latitude, selectedStore.longitude)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                    길찾기
+                  </a>
+                  
+                  {/* 카드로 이동 버튼 */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // 카드로 스크롤하기 위해 onMarkerClick을 다시 호출
+                      // 이미 selectedStore가 설정되어 있으므로 스크롤 로직이 실행됨
+                      if (onMarkerClick) {
+                        onMarkerClick(selectedStore);
+                      }
+                    }}
+                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    카드로 이동
+                  </button>
                 </div>
               </div>
             </InfoWindow>
@@ -1083,14 +1253,153 @@ export default function GoogleMapComponent({
 
       </GoogleMap>
 
-      {/* 반경 표시 오버레이 */}
-      {radius && (
-        <div className="absolute top-4 right-4 bg-white px-3 py-2 rounded-lg shadow-md z-10">
-          <p className="text-sm font-semibold text-gray-700">
-            반경: {radius.toFixed(1)}km
-          </p>
+      {/* 거리 및 유형 선택 플로팅 UI - 오른쪽 상단 */}
+      <div className="absolute top-4 right-4 bg-white rounded-xl shadow-lg z-10 p-4 min-w-[280px] max-w-[320px]">
+        {/* 실시간 급상승 - 항상 표시 (하나씩 자동 슬라이드) */}
+        {trendingStores.length > 0 ? (() => {
+          const currentStore = trendingStores[trendingIndex % trendingStores.length];
+          const rank = (trendingIndex % trendingStores.length) + 1;
+          
+          return (
+            <div className={`relative overflow-hidden ${isExpanded ? 'mb-4 pb-4 border-b border-gray-200' : 'mb-0 pb-0'}`} style={{ minHeight: '60px' }}>
+              <div 
+                className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 -mx-2 transition-all ease-in-out"
+                style={{
+                  transform: isTrendingSliding ? 'translateY(-100%)' : 'translateY(0)',
+                  opacity: isTrendingSliding ? 0 : 1,
+                  transitionDuration: '350ms',
+                }}
+                onClick={() => onMarkerClick?.(currentStore)}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse flex-shrink-0"></div>
+                  <span className="text-xs font-semibold text-blue-600">#{rank}</span>
+                  <span className="text-sm font-medium text-gray-900 truncate flex-1">{currentStore.name}</span>
+                </div>
+                <div className="text-xs text-gray-600">
+                  {currentStore.viewCountIncrease >= 5
+                    ? `급상승! 10분 동안 ${currentStore.viewCountIncrease}명이 더 봤어요!`
+                    : currentStore.viewCountIncrease > 0
+                    ? `인기 상승 중! ${currentStore.viewCountIncrease}명이 더 봤어요!`
+                    : '많은 사람들이 찾고 있어요!'}
+                </div>
+              </div>
+              
+            </div>
+          );
+        })() : stores.length > 0 ? (
+          <div className={`${isExpanded ? 'mb-4 pb-4 border-b border-gray-200' : 'mb-0 pb-0'}`}>
+            <div className="text-xs text-gray-500 text-center py-2">인기 장소 정보를 불러오는 중...</div>
+          </div>
+        ) : null}
+        
+        {isExpanded && (
+          <>
+            {/* 거리 선택 */}
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  거리
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-blue-600">
+                    {sliderValue >= 1000 
+                      ? `${(sliderValue / 1000).toFixed(1)}km`
+                      : `${sliderValue}m`}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    {distanceToTime(sliderValue)}분
+                  </span>
+                </div>
+              </div>
+              <div className="relative">
+                <input
+                  type="range"
+                  min="100"
+                  max="2000"
+                  step="50"
+                  value={sliderValue}
+                  onChange={handleSliderChange}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer smooth-slider"
+                  style={{
+                    background: `linear-gradient(to right, #2563eb 0%, #2563eb ${((sliderValue - 100) / (2000 - 100)) * 100}%, #e5e7eb ${((sliderValue - 100) / (2000 - 100)) * 100}%, #e5e7eb 100%)`
+                  }}
+                />
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-xs text-gray-500">100m</span>
+                <span className="text-xs text-gray-500">500m</span>
+                <span className="text-xs text-gray-500">1km</span>
+                <span className="text-xs text-gray-500">1.5km</span>
+                <span className="text-xs text-gray-500">2km</span>
+              </div>
+            </div>
+
+            {/* 유형 선택 - 가로 스크롤 */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                유형
+              </label>
+              <div 
+                ref={typeScrollRef}
+                className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide"
+                style={{
+                  WebkitOverflowScrolling: 'touch',
+                }}
+              >
+                {typeOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => onTypeChange?.(option.value)}
+                    className={`px-3 py-1.5 rounded-lg font-medium text-sm transition-colors whitespace-nowrap flex-shrink-0 ${
+                      type === option.value
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* 접기/펼치기 버튼 */}
+        <div className="relative">
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="w-full py-2 flex items-center justify-center gap-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
+          >
+            <svg
+              className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+          </button>
+          
+          {/* 랜덤 메시지 - 접혀 있을 때만 표시 */}
+          {!isExpanded && showRandomMessage && (
+            <div 
+              className="absolute top-full mt-3 bg-white rounded-lg shadow-lg px-4 py-2 border border-blue-200 z-50 animate-fade-in-out"
+              style={{ 
+                position: 'absolute',
+                top: '100%',
+                right: '-60px',
+                marginTop: '12px'
+              }}
+            >
+              <p className="text-sm text-gray-700 font-medium whitespace-nowrap">
+                거리, 유형을 선택할 수 있어요!
+              </p>
+            </div>
+          )}
         </div>
-      )}
+      </div>
+
 
       {/* 왼쪽에서 슬라이드되는 Google Maps 스타일 패널 */}
       {showDirectionsPanel && (selectedStore || clickedLocation) && (

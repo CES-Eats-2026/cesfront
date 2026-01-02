@@ -6,7 +6,6 @@ import OptionSelector from '@/components/OptionSelector';
 import GoogleMapComponent from '@/components/GoogleMap';
 import StoreCard from '@/components/StoreCard';
 import FeedbackModal from '@/components/FeedbackModal';
-import TrendingPlaces from '@/components/TrendingPlaces';
 import { getRecommendations, sendFeedbackToDiscord, incrementPlaceView } from '@/lib/api';
 import { StoreType, TimeOption, Store } from '@/types';
 
@@ -33,7 +32,9 @@ export default function Home() {
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [displayedCount, setDisplayedCount] = useState(10); // 표시할 아이템 수
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const [isTrendingCollapsed, setIsTrendingCollapsed] = useState(false); // 실시간 조회수 급상승 접기/펼치기 상태
+  const [inputText, setInputText] = useState(''); // 입력 텍스트
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [shouldCollapseOptions, setShouldCollapseOptions] = useState(false); // 거리/유형 UI 자동 접기
 
   // 고정 위치: The Venetian Expo
   const fixedLocation = { lat: 36.1215699, lng: -115.1651093 };
@@ -279,13 +280,9 @@ export default function Home() {
         setSelectedStore(updatedStore);
         setClickedMapLocation(null);
       }
-      // 마커 클릭 시 실시간 조회수 급상승 자동 접기
-      setIsTrendingCollapsed(true);
     } else {
       setSelectedStore(null);
       setClickedMapLocation(null);
-      // 선택 해제 시 실시간 조회수 급상승 펼치기
-      setIsTrendingCollapsed(false);
     }
   };
 
@@ -313,6 +310,9 @@ export default function Home() {
     setClickedMapLocation(null);
   };
 
+  // 헤더 높이 (대략 60px)
+  const headerHeight = 60;
+  
   // 드래그 시작 (마우스 및 터치 지원)
   const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
     setIsDragging(true);
@@ -337,17 +337,28 @@ export default function Home() {
       
       // 패널이 아래로 내려가 있는 경우 (panelOffset > 0)
       if (panelOffset > 0) {
-        // 위로 드래그하면 패널을 위로 올리기
-        const newOffset = Math.max(0, panelOffset - deltaY);
+        // 위로 드래그하면 패널을 위로 올리기 (상단 바까지 올라갈 수 있도록 음수 허용)
+        const newOffset = Math.max(-headerHeight, panelOffset - deltaY);
         setPanelOffset(newOffset);
         // 패널이 완전히 위로 올라가면 높이 조절 모드로 전환
-        if (newOffset === 0) {
+        if (newOffset <= 0) {
           setOptionsHeight(Math.max(200, Math.min(window.innerHeight * 0.8, dragStartHeight)));
         }
       } else {
-        // 패널이 위에 있는 경우 높이 조절
-        const newHeight = Math.max(200, Math.min(window.innerHeight * 0.8, dragStartHeight + deltaY));
-        setOptionsHeight(newHeight);
+        // 패널이 위에 있는 경우 높이 조절 또는 상단 바까지 올리기
+        const newHeight = dragStartHeight + deltaY;
+        
+        // 상단 바까지 올라가려면 panelOffset을 음수로 설정
+        if (newHeight < 200) {
+          // 높이가 너무 작아지면 panelOffset으로 전환하여 상단 바까지 올리기
+          const offsetFromTop = newHeight - 200; // 음수값
+          setPanelOffset(Math.max(-headerHeight, offsetFromTop));
+          setOptionsHeight(200);
+        } else {
+          // 일반적인 높이 조절
+          setPanelOffset(0);
+          setOptionsHeight(Math.max(200, Math.min(window.innerHeight * 0.8, newHeight)));
+        }
       }
     };
 
@@ -397,13 +408,13 @@ export default function Home() {
         }}
       >
         <div className="flex items-center justify-between">
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex items-center gap-3">
             <Image
               src="/web.png"
               alt="CES EATS Logo"
               width={40}
               height={40}
-              className="object-contain"
+              className="object-contain flex-shrink-0"
               unoptimized
               priority
             />
@@ -411,9 +422,10 @@ export default function Home() {
               CES EATS 2026
             </h1>
           </div>
+          
           <button
             onClick={() => setIsFeedbackModalOpen(true)}
-            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors"
+            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors flex-shrink-0"
             title="피드백 보내기"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -436,6 +448,9 @@ export default function Home() {
             onMarkerClick={handleMarkerClick}
             type={type}
             radiusKm={radiusKm}
+            timeOption={timeOption}
+            onTimeChange={setTimeOption}
+            onTypeChange={setType}
             onMapLocationClick={(location) => {
               setClickedMapLocation(location);
               // 선택된 store가 있으면 해제
@@ -444,15 +459,7 @@ export default function Home() {
               }
             }}
             onAddStore={handleAddStore}
-          />
-          {/* 실시간 조회수 급상승 상위 3개 */}
-          <TrendingPlaces 
-            stores={stores} 
-            onPlaceClick={(store) => {
-              handleMarkerClick(store);
-            }}
-            isCollapsed={isTrendingCollapsed}
-            onCollapseChange={setIsTrendingCollapsed}
+            autoCollapse={shouldCollapseOptions}
           />
         </div>
 
@@ -467,6 +474,24 @@ export default function Home() {
           }}
         >
           
+          {/* 드래그 핸들 - 모바일에서만 표시 */}
+          {!isDesktop && (
+            <div 
+              className="absolute top-0 left-0 right-0 h-12 flex items-center justify-center cursor-grab active:cursor-grabbing z-20 bg-white rounded-t-2xl"
+              onTouchStart={(e) => handleDragStart(e)}
+              onMouseDown={(e) => handleDragStart(e)}
+              style={{
+                touchAction: 'none'
+              }}
+            >
+              <div className="flex flex-col gap-1 items-center pointer-events-none">
+                <div className="w-10 h-0.5 bg-gray-400 rounded-full"></div>
+                <div className="w-10 h-0.5 bg-gray-400 rounded-full"></div>
+                <div className="w-10 h-0.5 bg-gray-400 rounded-full"></div>
+              </div>
+            </div>
+          )}
+          
           {/* 옵션 및 장소 목록 컨텐츠 */}
           <div
             className="overflow-hidden relative lg:h-full"
@@ -475,35 +500,35 @@ export default function Home() {
                 ? '100%' 
                 : `${Math.max(200, optionsHeight)}px`,
               minHeight: isDesktop ? 'auto' : '200px',
-              transition: isDragging ? 'none' : 'height 1s cubic-bezier(0.25, 2, 0.5, 1)'
+              transition: isDragging ? 'none' : 'height 1s cubic-bezier(0.25, 2, 0.5, 1)',
+              marginTop: !isDesktop ? '48px' : '0' // 드래그 핸들 공간 확보
             }}
           >
-              <div className="h-full overflow-y-auto" ref={optionsContainerRef} style={{ WebkitOverflowScrolling: 'touch', position: 'relative' }}>
-              {/* 옵션 선택 - sticky로 고정 (드래그 가능 영역) */}
               <div 
-                ref={stickyOptionsRef} 
-                className="sticky top-0 z-[60] bg-white px-4 pt-16 lg:pt-4 pb-4 border-b border-gray-200 shadow-sm"
-                onTouchStart={(e) => {
-                  if (!isDesktop) {
-                    handleDragStart(e);
-                  }
+                className="h-full overflow-y-auto" 
+                ref={optionsContainerRef} 
+                style={{ 
+                  WebkitOverflowScrolling: 'touch', 
+                  position: 'relative',
+                  paddingTop: '0px', // 상단 바 바로 아래에서 시작
+                  scrollPaddingTop: '0px' // 스크롤 시 상단 바 바로 아래에 위치
                 }}
-                onMouseDown={(e) => {
-                  if (!isDesktop) {
-                    handleDragStart(e);
+                onScroll={(e) => {
+                  const target = e.target as HTMLElement;
+                  const scrollTop = target.scrollTop;
+                  // 스크롤이 50px 이상 올라가면 거리/유형 UI 접기
+                  if (scrollTop > 50) {
+                    setShouldCollapseOptions(true);
+                  } else {
+                    setShouldCollapseOptions(false);
                   }
-                }}
-                style={{
-                  cursor: isDesktop ? 'default' : 'grab',
-                  touchAction: 'none'
                 }}
               >
-                {/* 드래그 핸들 시각적 표시 (이벤트 없음) */}
-                <div className="lg:hidden absolute top-2 left-1/2 -translate-x-1/2 flex flex-col gap-1 items-center pointer-events-none">
-                  <div className="w-10 h-0.5 bg-gray-400 rounded-full"></div>
-                  <div className="w-10 h-0.5 bg-gray-400 rounded-full"></div>
-                  <div className="w-10 h-0.5 bg-gray-400 rounded-full"></div>
-                </div>
+              {/* 옵션 선택 영역 - 지도 위에 floating UI로 이동하여 숨김 */}
+              <div 
+                ref={stickyOptionsRef} 
+                className="sticky top-0 z-[60] bg-white px-4 pt-16 lg:pt-4 pb-4 border-b border-gray-200 shadow-sm hidden"
+              >
                 <OptionSelector
                   timeOption={timeOption}
                   type={type}
@@ -560,17 +585,91 @@ export default function Home() {
                     return typeMatch && isWithinCircle;
                   });
                   
+                  // 거리 표시 형식
+                  const distanceText = radiusKm >= 1 
+                    ? `${radiusKm.toFixed(1)}km`
+                    : `${Math.round(radiusKm * 1000)}m`;
+                  
+                  // 유형 한국어 라벨
+                  const typeLabels: { [key: string]: string } = {
+                    'all': '전체',
+                    'restaurant': '레스토랑',
+                    'cafe': '카페',
+                    'fastfood': '패스트푸드',
+                    'bar': '바',
+                    'food': '음식점',
+                    'bakery': '베이커리',
+                    'meal_delivery': '배달음식',
+                    'night_club': '나이트클럽',
+                    'liquor_store': '주류판매점',
+                    'store': '상점',
+                    'shopping_mall': '쇼핑몰',
+                    'supermarket': '슈퍼마켓',
+                    'convenience_store': '편의점',
+                    'other': '기타',
+                  };
+                  const typeLabel = typeLabels[type] || '전체';
+                  
                   return (
                     <>
+                      {/* 텍스트 입력 필드 - 제목 위 가운데 */}
+                      <div className="mb-4 flex justify-center">
+                        <div className="w-full max-w-md flex items-end gap-2">
+                          <textarea
+                            ref={textareaRef}
+                            value={inputText}
+                            onChange={(e) => {
+                              setInputText(e.target.value);
+                              // 자동 높이 조절
+                              if (textareaRef.current) {
+                                textareaRef.current.style.height = 'auto';
+                                textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+                              }
+                            }}
+                            placeholder="선호하는 장소, 음식을 자유롭게 써봐요!"
+                            rows={1}
+                            className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none overflow-hidden"
+                            style={{ minHeight: '40px', maxHeight: '200px' }}
+                          />
+                          {/* 위쪽 화살표 버튼 */}
+                          <button
+                            onClick={() => {
+                              // 버튼 클릭 시 처리 로직 (필요시 추가)
+                              if (inputText.trim()) {
+                                // 메시지 전송 또는 처리 로직
+                                console.log('전송:', inputText);
+                                // setInputText(''); // 전송 후 초기화 (필요시)
+                              }
+                            }}
+                            className="flex-shrink-0 w-10 h-10 bg-black rounded-full flex items-center justify-center hover:bg-gray-800 transition-colors"
+                            style={{ minHeight: '40px' }}
+                          >
+                            <svg 
+                              className="w-5 h-5 text-white" 
+                              fill="none" 
+                              stroke="currentColor" 
+                              viewBox="0 0 24 24"
+                            >
+                              <path 
+                                strokeLinecap="round" 
+                                strokeLinejoin="round" 
+                                strokeWidth={2.5} 
+                                d="M5 15l7-7 7 7" 
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      
                       <div className="mb-4">
                         <h2 className="text-lg font-bold text-gray-900">
-                          장소 목록 ({filteredStores.length}개)
+                          {distanceText} 거리 이내, "{typeLabel}" 유형 결과에요 ({filteredStores.length}개)
                         </h2>
                         <p className="text-xs text-gray-600 mt-1">
-                          마커를 클릭하면 상세 정보를 볼 수 있습니다
+                          마커 혹은 카드를 클릭하면 상세 정보를 볼 수 있습니다
                         </p>
                       </div>
-                      <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
                         {filteredStores
                           .slice(0, displayedCount)
                           .map((store) => (
