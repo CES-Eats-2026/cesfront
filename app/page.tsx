@@ -6,10 +6,12 @@ import OptionSelector from '@/components/OptionSelector';
 import GoogleMapComponent from '@/components/GoogleMap';
 import StoreCard from '@/components/StoreCard';
 import FeedbackModal from '@/components/FeedbackModal';
+import SplashScreen from '@/components/SplashScreen';
 import { getRecommendations, sendFeedbackToDiscord, incrementPlaceView } from '@/lib/api';
 import { StoreType, TimeOption, Store } from '@/types';
 
 export default function Home() {
+  const [showSplash, setShowSplash] = useState(true);
   const [timeOption, setTimeOption] = useState<TimeOption>(24); // 2km = 24분 (초기값)
   const [type, setType] = useState<StoreType>('all');
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -399,7 +401,11 @@ export default function Home() {
   };
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+    <>
+      {showSplash && (
+        <SplashScreen onComplete={() => setShowSplash(false)} />
+      )}
+      <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       {/* 헤더 */}
       <div 
         className="bg-white border-b border-gray-200 px-4 py-3 flex-shrink-0 relative z-10" 
@@ -736,5 +742,6 @@ export default function Home() {
         onSubmit={handleFeedbackSubmit}
       />
     </div>
+    </>
   );
 }

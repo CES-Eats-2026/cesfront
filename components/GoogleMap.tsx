@@ -94,72 +94,82 @@ export default function GoogleMapComponent({
   const [trendingIndex, setTrendingIndex] = useState(0);
   const [isTrendingSliding, setIsTrendingSliding] = useState(false);
   
-  // 접기/펼치기 상태
-  const [isExpanded, setIsExpanded] = useState(true);
-  const isExpandedRef = useRef(isExpanded);
+  // 접기/펼치기 상태 (3단계 순환)
+  // 0: "실시간 급상승 조회 장소" 텍스트만 (최소화, 칸 작아짐)
+  // 1: 거리, 유형 선택 UI 표시
+  // 2: 실시간 급상승 장소 표시
+  const [expandState, setExpandState] = useState(2); // 초기값: 실시간 급상승 표시
+  const expandStateRef = useRef(expandState); // 최신 상태 참조용
+  const isExpandedRef = useRef(expandState === 1 || expandState === 2); // 거리/유형이 보이는지 여부
   
   // 랜덤 메시지 표시 상태
   const [showRandomMessage, setShowRandomMessage] = useState(false);
   const messageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // isExpanded 상태를 ref에 동기화
+  // expandState 상태를 ref에 동기화
   useEffect(() => {
-    isExpandedRef.current = isExpanded;
-  }, [isExpanded]);
+    expandStateRef.current = expandState;
+    isExpandedRef.current = expandState === 1 || expandState === 2;
+  }, [expandState]);
   
-  // autoCollapse prop이 변경되면 자동으로 접기
+  // autoCollapse prop이 변경되면 자동으로 접기 (상태 0으로)
   useEffect(() => {
     if (autoCollapse) {
-      setIsExpanded(false);
+      setExpandState(0);
     }
   }, [autoCollapse]);
   
-  // 접혀 있을 때 랜덤 메시지 표시 (반복)
+  // 접혀 있을 때 (상태 0 또는 상태 2) 메시지 표시 (2초마다 반복)
   useEffect(() => {
-    if (!isExpanded) {
-      const showMessage = () => {
-        // 접혀있는지 확인 (최신 상태)
-        if (!isExpandedRef.current) {
-          // 랜덤한 시간 간격으로 메시지 표시 (3-8초 사이)
-          const randomDelay = Math.random() * 5000 + 3000; // 3000ms ~ 8000ms
-          
-          messageTimeoutRef.current = setTimeout(() => {
-            // 다시 확인 (타이머 실행 중 상태가 변경되었을 수 있음)
-            if (!isExpandedRef.current) {
-              setShowRandomMessage(true);
-              
-              // 2-4초 후 메시지 숨김
-              const hideDelay = Math.random() * 2000 + 2000; // 2000ms ~ 4000ms
-              setTimeout(() => {
-                setShowRandomMessage(false);
-                // 메시지가 사라진 후 다시 랜덤하게 나타나도록 재귀 호출
-                if (!isExpandedRef.current) {
-                  showMessage();
-                }
-              }, hideDelay);
-            }
-          }, randomDelay);
+    if (expandState === 0 || expandState === 2) {
+      let isActive = true;
+      
+      const showAndHideMessage = () => {
+        const currentState = expandStateRef.current;
+        if (!isActive || (currentState !== 0 && currentState !== 2)) {
+          return;
         }
+        
+        // 메시지 표시
+        setShowRandomMessage(true);
+        
+        // 2초 후 메시지 숨김
+        setTimeout(() => {
+          const currentStateAfter = expandStateRef.current;
+          if (isActive && (currentStateAfter === 0 || currentStateAfter === 2)) {
+            setShowRandomMessage(false);
+            
+            // 2초 후 다시 표시
+            setTimeout(() => {
+              const currentStateFinal = expandStateRef.current;
+              if (isActive && (currentStateFinal === 0 || currentStateFinal === 2)) {
+                showAndHideMessage();
+              }
+            }, 2000);
+          }
+        }, 2000);
       };
       
-      // 첫 메시지 표시 시작
-      showMessage();
+      // 첫 메시지 즉시 표시
+      showAndHideMessage();
+      
+      return () => {
+        isActive = false;
+        setShowRandomMessage(false);
+        if (messageTimeoutRef.current) {
+          clearTimeout(messageTimeoutRef.current);
+          messageTimeoutRef.current = null;
+        }
+      };
     } else {
-      // 펼쳐져 있으면 메시지 숨김 및 타이머 정리
+      // 상태 1일 때만 메시지 숨김
       setShowRandomMessage(false);
       if (messageTimeoutRef.current) {
         clearTimeout(messageTimeoutRef.current);
         messageTimeoutRef.current = null;
       }
     }
-    
-    return () => {
-      if (messageTimeoutRef.current) {
-        clearTimeout(messageTimeoutRef.current);
-        messageTimeoutRef.current = null;
-      }
-    };
-  }, [isExpanded]);
+  }, [expandState]);
   
   // 사용자 방향 (heading) 상태
   const [userHeading, setUserHeading] = useState<number | null>(null);
@@ -262,8 +272,13 @@ export default function GoogleMapComponent({
 
     const storePosition = { lat: selectedStore.latitude, lng: selectedStore.longitude };
     
+    // 지도 중심을 아래쪽으로 보이도록 약간 위쪽으로 offset (lat를 증가시켜서 마커가 아래쪽에 보이게)
+    // 약 0.002도 위로 이동하면 화면에서 마커가 아래쪽에 위치하게 됨
+    const offsetLat = storePosition.lat + 0.002;
+    const offsetPosition = { lat: offsetLat, lng: storePosition.lng };
+    
     // 지도가 해당 위치로 이동 및 줌 인
-    mapRef.current.panTo(storePosition);
+    mapRef.current.panTo(offsetPosition);
     mapRef.current.setZoom(17); // 더 가까운 줌 레벨
   }, [selectedStore, isLoaded]);
 
@@ -1254,18 +1269,25 @@ export default function GoogleMapComponent({
       </GoogleMap>
 
       {/* 거리 및 유형 선택 플로팅 UI - 오른쪽 상단 */}
-      <div className="absolute top-4 right-4 bg-white rounded-xl shadow-lg z-10 p-4 min-w-[280px] max-w-[320px]">
-        {/* 실시간 급상승 - 항상 표시 (하나씩 자동 슬라이드) */}
-        {trendingStores.length > 0 ? (() => {
+      <div className={`absolute top-4 right-4 bg-white rounded-xl shadow-lg z-10 p-4 ${expandState === 0 ? 'min-w-[200px] max-w-[240px]' : 'min-w-[280px] max-w-[320px]'}`}>
+        {/* 상태 0: "실시간 급상승 조회 장소" 텍스트만 (최소화, 칸 작아짐) */}
+        {expandState === 0 && (
+          <div className="py-2">
+            <p className="text-xs text-gray-600 text-center">실시간 급상승 조회 장소</p>
+          </div>
+        )}
+        
+        {/* 상태 2: 실시간 급상승 장소 표시 */}
+        {expandState === 2 && trendingStores.length > 0 && (() => {
           const currentStore = trendingStores[trendingIndex % trendingStores.length];
           const rank = (trendingIndex % trendingStores.length) + 1;
           
           return (
-            <div className={`relative overflow-hidden ${isExpanded ? 'mb-4 pb-4 border-b border-gray-200' : 'mb-0 pb-0'}`} style={{ minHeight: '60px' }}>
+            <div className="relative overflow-hidden mb-2" style={{ minHeight: '60px' }}>
               <div 
                 className="cursor-pointer hover:bg-gray-50 rounded-lg p-2 -mx-2 transition-all ease-in-out"
                 style={{
-                  transform: isTrendingSliding ? 'translateY(-100%)' : 'translateY(0)',
+                  transform: isTrendingSliding ? 'translateX(-100%)' : 'translateX(0)',
                   opacity: isTrendingSliding ? 0 : 1,
                   transitionDuration: '350ms',
                 }}
@@ -1284,16 +1306,18 @@ export default function GoogleMapComponent({
                     : '많은 사람들이 찾고 있어요!'}
                 </div>
               </div>
-              
             </div>
           );
-        })() : stores.length > 0 ? (
-          <div className={`${isExpanded ? 'mb-4 pb-4 border-b border-gray-200' : 'mb-0 pb-0'}`}>
+        })()}
+        
+        {expandState === 2 && stores.length > 0 && trendingStores.length === 0 && (
+          <div className="mb-2">
             <div className="text-xs text-gray-500 text-center py-2">인기 장소 정보를 불러오는 중...</div>
           </div>
-        ) : null}
+        )}
         
-        {isExpanded && (
+        {/* 상태 1: 거리, 유형 선택 UI 표시 */}
+        {expandState === 1 && (
           <>
             {/* 거리 선택 */}
             <div className="mb-4">
@@ -1365,14 +1389,17 @@ export default function GoogleMapComponent({
           </>
         )}
 
-        {/* 접기/펼치기 버튼 */}
-        <div className="relative">
+        {/* 접기/펼치기 버튼 (^) - 3단계 순환 */}
+        <div className="relative mt-2">
           <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full py-2 flex items-center justify-center gap-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
+            onClick={() => {
+              // 0 -> 1 -> 2 -> 0 순환
+              setExpandState((prev) => (prev + 1) % 3);
+            }}
+            className="w-full py-1.5 flex items-center justify-center gap-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
           >
             <svg
-              className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+              className={`w-4 h-4 transition-transform ${expandState === 0 ? 'rotate-180' : ''}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -1381,15 +1408,14 @@ export default function GoogleMapComponent({
             </svg>
           </button>
           
-          {/* 랜덤 메시지 - 접혀 있을 때만 표시 */}
-          {!isExpanded && showRandomMessage && (
+          {/* 랜덤 메시지 - 상태 0 또는 상태 2일 때 표시 */}
+          {(expandState === 0 || expandState === 2) && showRandomMessage && (
             <div 
-              className="absolute top-full mt-3 bg-white rounded-lg shadow-lg px-4 py-2 border border-blue-200 z-50 animate-fade-in-out"
+              className="absolute bg-white rounded-lg shadow-lg px-4 py-2 border border-blue-200 z-50 animate-fade-in-out"
               style={{ 
-                position: 'absolute',
-                top: '100%',
-                right: '-60px',
-                marginTop: '12px'
+                top: 'calc(100% + 12px)',
+                right: '0px',
+                transform: 'none'
               }}
             >
               <p className="text-sm text-gray-700 font-medium whitespace-nowrap">
