@@ -237,8 +237,7 @@ export default function GoogleMapComponent({
       placesServiceRef.current = new google.maps.places.PlacesService(map);
     }
     
-    // 지도 로드 시 초기 Circle 생성
-    // Circle의 중심은 항상 원래 center prop을 사용 (현재 위치)
+    // Circle 생성 (시각적 표시만, 필터링은 하지 않음)
     if (radius > 0 && typeof google !== 'undefined' && google.maps && google.maps.Circle) {
       const radiusInMeters = Math.max(radius * 1000, 10);
       if (!circleRef.current) {
@@ -468,9 +467,8 @@ export default function GoogleMapComponent({
     };
     }, [isLoaded, selectedStore, showDirectionsPanel, onMarkerClick, onMapLocationClick, center, calculateDistance, stores]);
 
-  // Circle 업데이트 (중복 방지)
+  // Circle 업데이트 (시각적 표시만, 필터링은 하지 않음)
   // Circle의 중심은 항상 원래 center prop을 사용 (현재 위치 고정)
-  // selectedStore가 있어도 Circle은 현재 위치에 고정되어야 함
   useEffect(() => {
     if (!mapRef.current || !isLoaded || typeof google === 'undefined' || !google.maps || !google.maps.Circle) {
       return;
@@ -485,16 +483,15 @@ export default function GoogleMapComponent({
       return;
     }
 
-    // 새 Circle 생성
+    // Circle 업데이트
     const radiusInMeters = Math.max(radius * 1000, 10); // 최소 10m
     try {
-      // 기존 Circle이 있으면 업데이트, 없으면 새로 생성
-      // 중요: Circle의 중심은 항상 원래 center prop을 사용 (selectedStore와 무관)
       if (circleRef.current) {
-        // 항상 원래 center로 강제 설정 (다른 곳에서 변경되었을 수 있으므로)
+        // 기존 Circle 업데이트
         circleRef.current.setCenter(center);
         circleRef.current.setRadius(radiusInMeters);
       } else {
+        // 새 Circle 생성
         circleRef.current = new google.maps.Circle({
           center: center, // 원래 center prop 사용 (현재 위치)
           radius: radiusInMeters,
@@ -510,57 +507,8 @@ export default function GoogleMapComponent({
     } catch (error) {
       console.error('Error creating/updating circle:', error);
     }
-
-    // cleanup은 컴포넌트 언마운트 시에만 실행
-    // 의존성 변경 시에는 Circle을 업데이트하므로 제거하지 않음
-    // selectedStore는 의존성에 포함하지 않음 (Circle은 항상 원래 center를 사용)
   }, [center.lat, center.lng, radius, isLoaded]);
 
-  // selectedStore가 변경될 때마다 Circle의 중심을 원래 center로 강제 고정
-  // 주기적으로도 체크하여 다른 곳에서 변경되었을 경우 원래 center로 복원
-  useEffect(() => {
-    if (!circleRef.current || !center) {
-      return;
-    }
-
-    // Circle의 중심이 원래 center와 다른지 확인하고 강제로 원래 center로 설정
-    const currentCenter = circleRef.current.getCenter();
-    if (currentCenter) {
-      const latDiff = Math.abs(currentCenter.lat() - center.lat);
-      const lngDiff = Math.abs(currentCenter.lng() - center.lng);
-      // 중심이 다르면 원래 center로 강제 설정
-      if (latDiff > 0.0001 || lngDiff > 0.0001) {
-        circleRef.current.setCenter(center);
-      }
-    } else {
-      circleRef.current.setCenter(center);
-    }
-  }, [selectedStore, center]);
-
-  // 주기적으로 Circle의 중심을 확인하고 원래 center로 고정
-  useEffect(() => {
-    if (!circleRef.current || !center || !isLoaded) {
-      return;
-    }
-
-    const intervalId = setInterval(() => {
-      if (circleRef.current && center) {
-        const currentCenter = circleRef.current.getCenter();
-        if (currentCenter) {
-          const latDiff = Math.abs(currentCenter.lat() - center.lat);
-          const lngDiff = Math.abs(currentCenter.lng() - center.lng);
-          // 중심이 다르면 원래 center로 강제 설정
-          if (latDiff > 0.0001 || lngDiff > 0.0001) {
-            circleRef.current.setCenter(center);
-          }
-        }
-      }
-    }, 100); // 100ms마다 체크
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [center, isLoaded]);
 
   // 경로 계산
   const calculateRoute = useCallback((mode: TravelMode) => {
@@ -1044,16 +992,9 @@ export default function GoogleMapComponent({
         {/* stores 배열의 각 장소에 대한 마커 - 유형 필터 및 거리 필터 적용 */}
         {stores
           ?.filter((store) => {
-            // 유형 필터링
+            // 유형 필터링만 수행 (거리 제한 제거)
             const typeMatch = type === 'all' || store.type === type || (type === 'other' && (!store.type || store.type === 'other'));
-            
-            if (!typeMatch) return false;
-            
-            // 거리 필터링 (Circle 내부에 있는지 확인)
-            const distance = calculateDistance(center.lat, center.lng, store.latitude, store.longitude);
-            const isWithinCircle = distance <= radiusKm;
-            
-            return isWithinCircle;
+            return typeMatch;
           })
           .map((store) => (
             <Marker

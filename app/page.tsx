@@ -138,18 +138,11 @@ export default function Home() {
     if (selectedStore) {
       console.log('selectedStore changed, attempting to scroll to:', selectedStore.name, 'type:', selectedStore.type, 'current filter type:', type);
       
-      // Circle 내부에 있는 필터링된 stores에 선택된 상점이 있는지 확인
+      // 타입으로만 필터링된 stores에 선택된 상점이 있는지 확인 (거리 제한 제거)
       const currentLocation = location || fixedLocation;
       const filteredStores = stores.filter(store => {
         const typeMatch = type === 'all' || store.type === type || (type === 'other' && (!store.type || store.type === 'other'));
-        const distance = calculateDistance(
-          currentLocation.lat,
-          currentLocation.lng,
-          store.latitude,
-          store.longitude
-        );
-        const isWithinCircle = distance <= radiusKm;
-        return typeMatch && isWithinCircle;
+        return typeMatch;
       });
       
       console.log('Filtered stores count:', filteredStores.length, 'selectedStore id:', selectedStore.id);
@@ -670,25 +663,10 @@ export default function Home() {
                   // Circle 내부에 있는 장소만 필터링
                   const currentLocation = location || fixedLocation;
                   const filteredStores = stores.filter(store => {
-                    // 타입 필터링
+                    // 타입 필터링만 수행 (거리 제한 제거)
                     const typeMatch = type === 'all' || store.type === type || (type === 'other' && (!store.type || store.type === 'other'));
-                    
-                    // Circle 내부에 있는지 확인 (거리 계산)
-                    const distance = calculateDistance(
-                      currentLocation.lat,
-                      currentLocation.lng,
-                      store.latitude,
-                      store.longitude
-                    );
-                    const isWithinCircle = distance <= radiusKm;
-                    
-                    return typeMatch && isWithinCircle;
+                    return typeMatch;
                   });
-                  
-                  // 거리 표시 형식
-                  const distanceText = radiusKm >= 1 
-                    ? `${radiusKm.toFixed(1)}km`
-                    : `${Math.round(radiusKm * 1000)}m`;
                   
                   // 유형 한국어 라벨
                   const typeLabels: { [key: string]: string } = {
@@ -763,7 +741,7 @@ export default function Home() {
                       
                       <div className="mb-4">
                         <h2 className="text-lg font-bold text-gray-900">
-                          {distanceText} 거리 이내, "{typeLabel}" 유형 결과에요 ({filteredStores.length}개)
+                          "{typeLabel}" 유형 결과 ({filteredStores.length}개)
                         </h2>
                         <p className="text-xs text-gray-600 mt-1">
                           마커 혹은 카드를 클릭하면 상세 정보를 볼 수 있습니다
