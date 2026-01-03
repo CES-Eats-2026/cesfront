@@ -14,6 +14,7 @@ export interface Store {
   longitude: number;
   address?: string;
   photos?: string[]; // 사진 URL 리스트
+  types?: string[]; // Google Places API types 리스트 (필터링용)
   reviews?: Review[]; // 리뷰 리스트
   viewCount?: number; // 조회수
   viewCountIncrease?: number; // 최근 10분 동안의 조회수 증가량

@@ -10,6 +10,68 @@ import SplashScreen from '@/components/SplashScreen';
 import { getRecommendations, sendFeedbackToDiscord, incrementPlaceView } from '@/lib/api';
 import { StoreType, TimeOption, Store } from '@/types';
 
+// 유형별 Google Places API types 매핑 (Redis에 실제 저장된 types 기반)
+const TYPE_TO_PLACES_TYPES: Record<StoreType, string[]> = {
+  'all': [], // 전체는 모든 타입 포함
+  'restaurant': [
+    // 일반 레스토랑
+    'restaurant', 'food', 'establishment',
+    // 국가별 레스토랑
+    'american_restaurant', 'asian_restaurant', 'brazilian_restaurant',
+    'chinese_restaurant', 'french_restaurant', 'italian_restaurant',
+    'japanese_restaurant', 'korean_restaurant', 'mexican_restaurant',
+    // 특수 레스토랑
+    'breakfast_restaurant', 'brunch_restaurant', 'buffet_restaurant',
+    'dessert_restaurant', 'diner', 'fine_dining_restaurant',
+    'pizza_restaurant', 'seafood_restaurant', 'steak_house',
+    'sushi_restaurant', 'vegetarian_restaurant',
+    // 기타 음식 관련
+    'bar_and_grill', 'barbecue_restaurant', 'catering_service', 'deli'
+  ],
+  'cafe': [
+    'cafe', 'coffee_shop', 'internet_cafe', 'tea_house'
+  ],
+  'fastfood': [
+    'fast_food_restaurant', 'hamburger_restaurant', 'sandwich_shop',
+    'meal_takeaway', 'meal_delivery', 'food_delivery'
+  ],
+  'bar': [
+    'bar', 'night_club', 'pub'
+  ],
+  'food': [
+    'restaurant', 'food', 'food_store', 'meal_takeaway', 'meal_delivery',
+    'food_delivery', 'establishment'
+  ],
+  'bakery': [
+    'bakery', 'bagel_shop', 'donut_shop', 'confectionery',
+    'candy_store', 'chocolate_shop', 'dessert_shop', 'ice_cream_shop'
+  ],
+  'meal_delivery': [
+    'meal_delivery', 'food_delivery', 'meal_takeaway', 'fast_food_restaurant'
+  ],
+  'night_club': [
+    'night_club', 'bar', 'pub'
+  ],
+  'liquor_store': [
+    'liquor_store'
+  ],
+  'store': [
+    'store', 'clothing_store', 'shoe_store', 'electronics_store',
+    'furniture_store', 'home_goods_store', 'home_improvement_store',
+    'gift_shop', 'sporting_goods_store', 'hardware_store'
+  ],
+  'shopping_mall': [
+    'shopping_mall', 'department_store'
+  ],
+  'supermarket': [
+    'supermarket', 'grocery_store', 'food_store', 'convenience_store'
+  ],
+  'convenience_store': [
+    'convenience_store', 'grocery_store', 'food_store'
+  ],
+  'other': [] // 기타는 매칭되지 않는 모든 타입
+};
+
 export default function Home() {
   const [showSplash, setShowSplash] = useState(true);
   const [timeOption, setTimeOption] = useState<TimeOption>(24); // 2km = 24분 (초기값)
@@ -141,8 +203,21 @@ export default function Home() {
       // 타입으로만 필터링된 stores에 선택된 상점이 있는지 확인 (거리 제한 제거)
       const currentLocation = location || fixedLocation;
       const filteredStores = stores.filter(store => {
-        const typeMatch = type === 'all' || store.type === type || (type === 'other' && (!store.type || store.type === 'other'));
-        return typeMatch;
+        if (type === 'all') {
+          return true;
+        }
+        
+        // types 기반 필터링 (Redis에서 가져온 Google Places API types 사용)
+        if (store.types && store.types.length > 0) {
+          const typeMapping = TYPE_TO_PLACES_TYPES[type];
+          if (typeMapping && typeMapping.length > 0) {
+            // store.types 중 하나라도 선택한 유형의 types 리스트에 포함되면 표시
+            return store.types.some(storeType => typeMapping.includes(storeType));
+          }
+        }
+        
+        // types가 없으면 기존 방식으로 fallback
+        return store.type === type || (type === 'other' && (!store.type || store.type === 'other'));
       });
       
       console.log('Filtered stores count:', filteredStores.length, 'selectedStore id:', selectedStore.id);
@@ -664,8 +739,21 @@ export default function Home() {
                   const currentLocation = location || fixedLocation;
                   const filteredStores = stores.filter(store => {
                     // 타입 필터링만 수행 (거리 제한 제거)
-                    const typeMatch = type === 'all' || store.type === type || (type === 'other' && (!store.type || store.type === 'other'));
-                    return typeMatch;
+                    if (type === 'all') {
+                      return true;
+                    }
+                    
+                    // types 기반 필터링 (Redis에서 가져온 Google Places API types 사용)
+                    if (store.types && store.types.length > 0) {
+                      const typeMapping = TYPE_TO_PLACES_TYPES[type];
+                      if (typeMapping && typeMapping.length > 0) {
+                        // store.types 중 하나라도 선택한 유형의 types 리스트에 포함되면 표시
+                        return store.types.some(storeType => typeMapping.includes(storeType));
+                      }
+                    }
+                    
+                    // types가 없으면 기존 방식으로 fallback
+                    return store.type === type || (type === 'other' && (!store.type || store.type === 'other'));
                   });
                   
                   // 유형 한국어 라벨
