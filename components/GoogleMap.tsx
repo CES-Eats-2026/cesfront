@@ -932,6 +932,9 @@ export default function GoogleMapComponent({
 
   // 에러 발생 시
   if (loadError) {
+    const isApiNotActivated = loadError.message?.includes('ApiNotActivatedMapError') || 
+                              loadError.message?.includes('ApiNotActivated');
+    
     return (
       <div className="w-full h-full bg-gray-200 flex items-center justify-center">
         <div className="text-center p-4 max-w-md">
@@ -939,6 +942,31 @@ export default function GoogleMapComponent({
           <p className="text-xs text-gray-600 mb-2">
             에러: {loadError.message || 'Unknown error'}
           </p>
+          {isApiNotActivated && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mb-3 text-left">
+              <p className="text-xs font-semibold text-yellow-800 mb-2">
+                ⚠️ Maps JavaScript API가 활성화되지 않았습니다
+              </p>
+              <p className="text-xs text-yellow-700 mb-2">
+                다음 단계를 따라주세요:
+              </p>
+              <ol className="text-xs text-yellow-700 space-y-1 list-decimal list-inside">
+                <li>Google Cloud Console에 로그인</li>
+                <li>프로젝트 선택</li>
+                <li>API 및 서비스 → 라이브러리</li>
+                <li>"Maps JavaScript API" 검색 후 활성화</li>
+                <li>필요시 "Places API"도 활성화</li>
+              </ol>
+              <a 
+                href="https://console.cloud.google.com/apis/library/maps-backend.googleapis.com" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-xs text-blue-600 hover:underline mt-2 inline-block"
+              >
+                Maps JavaScript API 활성화하기 →
+              </a>
+            </div>
+          )}
           <p className="text-xs text-gray-500 mb-2">
             가능한 원인:
           </p>
