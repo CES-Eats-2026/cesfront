@@ -102,9 +102,21 @@ export default function Home() {
   const [inputText, setInputText] = useState(''); // 입력 텍스트
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [shouldCollapseOptions, setShouldCollapseOptions] = useState(false); // 거리/유형 UI 자동 접기
+  const [isInLasVegas, setIsInLasVegas] = useState<boolean | null>(null); // Las Vegas 여부 (null: 확인 중)
+  const [showLocationModal, setShowLocationModal] = useState(false); // 위치 안내 모달 표시 여부
+  const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(null); // GPS 위치
+  const watchIdRef = useRef<number | null>(null); // GPS 추적 ID
 
   // 고정 위치: The Venetian Expo
   const fixedLocation = { lat: 36.1215699, lng: -115.1651093 };
+
+  // Las Vegas 범위 판단 함수
+  const isLocationInLasVegas = useCallback((lat: number, lng: number): boolean => {
+    // Las Vegas 대략 범위
+    // 위도: 36.0 ~ 36.3
+    // 경도: -115.3 ~ -115.0
+    return lat >= 36.0 && lat <= 36.3 && lng >= -115.3 && lng <= -115.0;
+  }, []);
 
   // 거리 계산 함수 (Haversine formula) - Circle 내부 장소 필터링용
   const calculateDistance = useCallback((lat1: number, lng1: number, lat2: number, lng2: number): number => {
@@ -119,11 +131,99 @@ export default function Home() {
     return R * c; // 거리 (km)
   }, []);
 
+  // GPS 위치 가져오기 및 Las Vegas 여부 확인
   useEffect(() => {
-    // The Venetian Expo 위치를 고정으로 사용
-    setLocation(fixedLocation);
-    setMapCenter(fixedLocation);
-    
+    if (!navigator.geolocation) {
+      console.log('Geolocation is not supported by this browser');
+      setIsInLasVegas(false);
+      setLocation(fixedLocation);
+      setMapCenter(fixedLocation);
+      setShowLocationModal(true);
+      return;
+    }
+
+    // 현재 위치 가져오기
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const isInLV = isLocationInLasVegas(lat, lng);
+        
+        setIsInLasVegas(isInLV);
+        setGpsLocation({ lat, lng });
+        
+        if (isInLV) {
+          // Las Vegas에 있으면 GPS 위치 사용
+          setLocation({ lat, lng });
+          setMapCenter({ lat, lng });
+          console.log('Using GPS location in Las Vegas:', lat, lng);
+          
+          // 위치 추적 시작 (위치 변경 시 업데이트)
+          watchIdRef.current = navigator.geolocation.watchPosition(
+            (updatedPosition) => {
+              const updatedLat = updatedPosition.coords.latitude;
+              const updatedLng = updatedPosition.coords.longitude;
+              
+              // 여전히 Las Vegas에 있는지 확인
+              if (isLocationInLasVegas(updatedLat, updatedLng)) {
+                setGpsLocation({ lat: updatedLat, lng: updatedLng });
+                setLocation({ lat: updatedLat, lng: updatedLng });
+                setMapCenter({ lat: updatedLat, lng: updatedLng });
+                console.log('Location updated:', updatedLat, updatedLng);
+              } else {
+                // Las Vegas를 벗어나면 고정 위치로 전환
+                setIsInLasVegas(false);
+                setLocation(fixedLocation);
+                setMapCenter(fixedLocation);
+                setShowLocationModal(true);
+                if (watchIdRef.current !== null) {
+                  navigator.geolocation.clearWatch(watchIdRef.current);
+                  watchIdRef.current = null;
+                }
+                
+                // 5초 후 자동으로 오버레이 숨기기
+                setTimeout(() => {
+                  setShowLocationModal(false);
+                }, 5000);
+              }
+            },
+            (error) => {
+              console.error('Error watching position:', error);
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 60000, // 1분
+            }
+          );
+        } else {
+          // Las Vegas에 없으면 고정 위치 사용
+          setLocation(fixedLocation);
+          setMapCenter(fixedLocation);
+          setShowLocationModal(true);
+          console.log('Not in Las Vegas, using fixed location');
+        }
+      },
+      (error) => {
+        console.error('Error getting location:', error);
+        // 위치 가져오기 실패 시 고정 위치 사용
+        setIsInLasVegas(false);
+        setLocation(fixedLocation);
+        setMapCenter(fixedLocation);
+        setShowLocationModal(true);
+        
+        // 5초 후 자동으로 오버레이 숨기기
+        setTimeout(() => {
+          setShowLocationModal(false);
+        }, 5000);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0, // 항상 최신 위치 가져오기
+      }
+    );
+
     // 클라이언트 사이드에서만 화면 크기 확인
     const checkIsDesktop = () => {
       setIsDesktop(window.innerWidth >= 1024);
@@ -149,8 +249,13 @@ export default function Home() {
     return () => {
       window.removeEventListener('resize', checkIsDesktop);
       window.removeEventListener('resize', updateMaxPanelOffset);
+      // GPS 추적 정리
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
     };
-  }, []);
+  }, [isLocationInLasVegas]);
 
   const fetchRecommendations = useCallback(async () => {
     const currentLocation = location || fixedLocation;
@@ -601,7 +706,7 @@ export default function Home() {
         {/* 지도 영역 - 헤더 아래부터 전체 높이까지 */}
         <div className="flex-1 relative min-h-0 lg:min-w-0">
           <GoogleMapComponent
-            center={currentLocation}
+            center={mapCenter || location || fixedLocation}
             radius={radiusKm}
             stores={stores}
             selectedStore={selectedStore}
@@ -621,6 +726,18 @@ export default function Home() {
             onAddStore={handleAddStore}
             autoCollapse={shouldCollapseOptions}
           />
+          
+          {/* 위치 안내 오버레이 - 지도 위에 투명하게 표시 */}
+          {showLocationModal && isInLasVegas === false && (
+            <div className="absolute top-4 left-4 z-50 pointer-events-auto">
+              <div className="bg-gray-800 bg-opacity-30 text-white px-4 py-3 rounded-lg shadow-lg backdrop-blur-sm animate-fade-in">
+                <p className="text-sm font-medium text-center">
+                  현재 위치가 Las Vegas가 아니므로,<br />
+                  임의의 점에서 보여집니다.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 옵션 선택 및 장소 목록 영역 - 모바일: 아래, 데스크톱: 오른쪽 */}
