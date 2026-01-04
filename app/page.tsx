@@ -106,6 +106,7 @@ export default function Home() {
   const [ragLoading, setRagLoading] = useState(false); // RAG 로딩 상태
   const [showRagResults, setShowRagResults] = useState(false); // RAG 결과 표시 여부
   const [userPreferenceText, setUserPreferenceText] = useState<string>(''); // 사용자가 입력한 자연어
+  const [isRandomResult, setIsRandomResult] = useState<boolean>(false); // 랜덤 결과 여부
   const [isInLasVegas, setIsInLasVegas] = useState<boolean | null>(null); // Las Vegas 여부 (null: 확인 중)
   const [showLocationModal, setShowLocationModal] = useState(false); // 위치 안내 모달 표시 여부
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(null); // GPS 위치
@@ -307,6 +308,7 @@ export default function Home() {
       
       setRagStores(response.stores || []);
       setUserPreferenceText(userPreference); // 사용자 입력 텍스트 저장
+      setIsRandomResult(response.isRandom || false); // 랜덤 결과 여부 저장
       
       // 입력 필드 초기화
       setInputText('');
@@ -319,6 +321,7 @@ export default function Home() {
       console.error('Error fetching RAG recommendations:', err);
       setRagStores([]);
       setUserPreferenceText('');
+      setIsRandomResult(false);
     } finally {
       setRagLoading(false);
     }
@@ -1008,7 +1011,11 @@ export default function Home() {
                             <>
                               <div className="mb-3">
                                 <p className="text-sm font-semibold text-blue-900">
-                                  {userPreferenceText ? `"${userPreferenceText}" ` : ''}추천 장소 {ragStores.length}개
+                                  {isRandomResult 
+                                    ? `장소추천 (${ragStores.length}개), LLM 토큰이 다 사용이 되어, 랜덤 ${ragStores.length}개를 반환합니다`
+                                    : userPreferenceText 
+                                      ? `"${userPreferenceText}" 추천 장소 ${ragStores.length}개`
+                                      : `추천 장소 ${ragStores.length}개`}
                                 </p>
                               </div>
                               <div className="grid grid-cols-2 gap-3">
@@ -1039,6 +1046,7 @@ export default function Home() {
                                   setShowRagResults(false);
                                   setRagStores([]);
                                   setUserPreferenceText('');
+                                  setIsRandomResult(false);
                                 }}
                                 className="mt-3 text-xs text-blue-600 hover:text-blue-800 underline"
                               >

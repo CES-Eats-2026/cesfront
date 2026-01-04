@@ -95,7 +95,7 @@ export async function getRagRecommendations(
   longitude: number,
   maxDistanceKm: number,
   userPreference: string
-): Promise<{ stores: Store[]; reason: string }> {
+): Promise<{ stores: Store[]; reason: string; isRandom?: boolean }> {
   try {
     const response = await fetch(`${API_BASE_URL}/rag/recommendations`, {
       method: 'POST',
@@ -119,7 +119,8 @@ export async function getRagRecommendations(
     const data = await response.json();
     return {
       stores: Array.isArray(data.stores) ? data.stores : [],
-      reason: data.reason || '추천 장소를 찾았습니다.'
+      reason: data.reason || '추천 장소를 찾았습니다.',
+      isRandom: data.isRandom || false
     };
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
