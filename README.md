@@ -3,7 +3,7 @@
 CESEats는 CES 2026 참가자를 위한
 빠르고 효율적인 식사 선택을 돕는 웹 애플리케이션입니다.
 
-CESEats는 CES 참가자의 ‘식사 결정 비용’을 줄여주는 위치 기반 실시간 식사 추천 서비스입니다.
+전시 참가자의 ‘식사 결정 비용’을 줄여주는 위치 기반 실시간 식사 추천 서비스입니다.
 
 
 📌 사이트 => https://ceseats.store/ 
@@ -49,13 +49,32 @@ CESEats는 이러한 문제를 해결하고,
 ## 주요기능
 
 - 현재 사용자의 위치 기반 음식점 추천
-  - 도보 시간, 장소 사진, 리뷰/평점 정보 제공
-- 자연어 기반 음식점 추천 (추가중)
-- Google Maps 리뷰, 메뉴 텍스트를 기반으로 음식 카테고리 자동 분류 (추가중)
+  - 도보 시간, 리뷰/평점 정보 제공
+- 자연어 기반 음식점 추천
 - 피드백 요청
 - 한/영 버전 (추가중)
 
+
 ## 현재까지의 MVP 
+
+(업데이트 : 2026.01.04 version 0.2)
+
+- 웹페이지 Full Screen
+
+<img width="1702" height="1061" alt="image" src="https://github.com/user-attachments/assets/4351144a-fd1e-4b0c-96f5-c76ec848a5eb" />
+
+- 웹페이지 Split Screen
+
+<img width="550" height="900" alt="image" src="https://github.com/user-attachments/assets/15312083-c9f1-4145-873d-58215265ecbf" />
+
+- 모바일
+
+<img width="400" height="904" alt="image" src="https://github.com/user-attachments/assets/8234543d-05c1-426a-b963-76e708e104d2" />
+
+
+<details> <summary>지난 업데이트
+</summary>
+
 (업데이트 : 2026.01.02 version 0.1)
 
 - 웹페이지 Full Screen
@@ -71,5 +90,5 @@ CESEats는 이러한 문제를 해결하고,
 
 [![CESEats Demo v0.1](https://img.youtube.com/vi/37cDLn0yzS0/0.jpg)](https://youtu.be/37cDLn0yzS0)
 
-
+</details>
 
