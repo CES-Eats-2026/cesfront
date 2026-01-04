@@ -1,4 +1,4 @@
-import { RecommendationRequest, RecommendationResponse } from '@/types';
+import { RecommendationRequest, RecommendationResponse, Store } from '@/types';
 
 // 백엔드 API URL (프로덕션: https://ceseats.r-e.kr/api, 로컬: http://localhost:8080/api)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://ceseats.r-e.kr/api';
@@ -79,6 +79,53 @@ export async function incrementPlaceView(placeId: string): Promise<number | null
   } catch (error) {
     console.error('Error incrementing view count:', error);
     return null;
+  }
+}
+
+/**
+ * RAG 기반 자연어 추천 API 호출
+ * @param latitude 위도
+ * @param longitude 경도
+ * @param maxDistanceKm 최대 거리 (km)
+ * @param userPreference 사용자 자연어 선호도
+ * @returns 추천된 장소 리스트와 이유
+ */
+export async function getRagRecommendations(
+  latitude: number,
+  longitude: number,
+  maxDistanceKm: number,
+  userPreference: string
+): Promise<{ stores: Store[]; reason: string }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/rag/recommendations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        latitude,
+        longitude,
+        maxDistanceKm,
+        userPreference,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('RAG API Error:', response.status, errorText);
+      throw new Error(`Failed to fetch RAG recommendations: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    return {
+      stores: Array.isArray(data.stores) ? data.stores : [],
+      reason: data.reason || '추천 장소를 찾았습니다.'
+    };
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      throw new Error('백엔드 서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인하세요.');
+    }
+    throw error;
   }
 }
 

@@ -7,7 +7,7 @@ import GoogleMapComponent from '@/components/GoogleMap';
 import StoreCard from '@/components/StoreCard';
 import FeedbackModal from '@/components/FeedbackModal';
 import SplashScreen from '@/components/SplashScreen';
-import { getRecommendations, sendFeedbackToDiscord, incrementPlaceView } from '@/lib/api';
+import { getRecommendations, sendFeedbackToDiscord, incrementPlaceView, getRagRecommendations } from '@/lib/api';
 import { StoreType, TimeOption, Store } from '@/types';
 
 // 유형별 Google Places API types 매핑 (Redis에 실제 저장된 types 기반)
@@ -102,6 +102,10 @@ export default function Home() {
   const [inputText, setInputText] = useState(''); // 입력 텍스트
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [shouldCollapseOptions, setShouldCollapseOptions] = useState(false); // 거리/유형 UI 자동 접기
+  const [ragStores, setRagStores] = useState<Store[]>([]); // RAG 추천 결과
+  const [ragLoading, setRagLoading] = useState(false); // RAG 로딩 상태
+  const [showRagResults, setShowRagResults] = useState(false); // RAG 결과 표시 여부
+  const [userPreferenceText, setUserPreferenceText] = useState<string>(''); // 사용자가 입력한 자연어
   const [isInLasVegas, setIsInLasVegas] = useState<boolean | null>(null); // Las Vegas 여부 (null: 확인 중)
   const [showLocationModal, setShowLocationModal] = useState(false); // 위치 안내 모달 표시 여부
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(null); // GPS 위치
@@ -136,8 +140,8 @@ export default function Home() {
     if (!navigator.geolocation) {
       console.log('Geolocation is not supported by this browser');
       setIsInLasVegas(false);
-      setLocation(fixedLocation);
-      setMapCenter(fixedLocation);
+    setLocation(fixedLocation);
+    setMapCenter(fixedLocation);
       setShowLocationModal(true);
       return;
     }
@@ -223,7 +227,7 @@ export default function Home() {
         maximumAge: 0, // 항상 최신 위치 가져오기
       }
     );
-
+    
     // 클라이언트 사이드에서만 화면 크기 확인
     const checkIsDesktop = () => {
       setIsDesktop(window.innerWidth >= 1024);
@@ -284,6 +288,41 @@ export default function Home() {
       setLoading(false);
     }
   }, [location, timeOption]); // type 제거 - 프론트엔드에서 필터링
+
+  // RAG 추천 함수
+  const fetchRagRecommendations = useCallback(async (userPreference: string) => {
+    const currentLocation = location || fixedLocation;
+    
+    setRagLoading(true);
+    setError(null);
+    setShowRagResults(true);
+
+    try {
+      const response = await getRagRecommendations(
+        currentLocation.lat,
+        currentLocation.lng,
+        5, // 최대 5km
+        userPreference
+      );
+      
+      setRagStores(response.stores || []);
+      setUserPreferenceText(userPreference); // 사용자 입력 텍스트 저장
+      
+      // 입력 필드 초기화
+      setInputText('');
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '추천을 가져오는데 실패했습니다.';
+      setError(errorMessage);
+      console.error('Error fetching RAG recommendations:', err);
+      setRagStores([]);
+      setUserPreferenceText('');
+    } finally {
+      setRagLoading(false);
+    }
+  }, [location]);
 
   // timeOption이 변경되면 반경도 업데이트
   // 도보 속도 5km/h 기준: timeOption 분 동안 걸을 수 있는 거리 = (timeOption / 60) * 5km
@@ -902,29 +941,42 @@ export default function Home() {
                             ref={textareaRef}
                             value={inputText}
                             onChange={(e) => {
-                              setInputText(e.target.value);
+                              // 100자로 제한
+                              const newValue = e.target.value.length > 100 
+                                ? e.target.value.substring(0, 100) 
+                                : e.target.value;
+                              setInputText(newValue);
                               // 자동 높이 조절
                               if (textareaRef.current) {
                                 textareaRef.current.style.height = 'auto';
                                 textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
                               }
                             }}
-                            placeholder="선호하는 장소, 음식을 자유롭게 써봐요!"
+                            onKeyDown={(e) => {
+                              // 엔터 키 처리 (Shift+Enter는 줄바꿈)
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                if (inputText.trim() && !ragLoading) {
+                                  fetchRagRecommendations(inputText.trim());
+                                }
+                              }
+                            }}
+                            placeholder="선호하는 장소, 음식을 자유롭게 써봐요! (최대 100자)"
                             rows={1}
+                            maxLength={100}
                             className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none overflow-hidden"
                             style={{ minHeight: '40px', maxHeight: '200px' }}
+                            disabled={ragLoading}
                           />
                           {/* 위쪽 화살표 버튼 */}
                           <button
                             onClick={() => {
-                              // 버튼 클릭 시 처리 로직 (필요시 추가)
-                              if (inputText.trim()) {
-                                // 메시지 전송 또는 처리 로직
-                                console.log('전송:', inputText);
-                                // setInputText(''); // 전송 후 초기화 (필요시)
+                              if (inputText.trim() && !ragLoading) {
+                                fetchRagRecommendations(inputText.trim());
                               }
                             }}
-                            className="flex-shrink-0 w-10 h-10 bg-black rounded-full flex items-center justify-center hover:bg-gray-800 transition-colors"
+                            disabled={ragLoading || !inputText.trim()}
+                            className="flex-shrink-0 w-10 h-10 bg-black rounded-full flex items-center justify-center hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             style={{ minHeight: '40px' }}
                           >
                             <svg 
@@ -943,6 +995,59 @@ export default function Home() {
                           </button>
                         </div>
                       </div>
+                      
+                      {/* RAG 추천 결과 표시 */}
+                      {showRagResults && (ragStores.length > 0 || ragLoading) && (
+                        <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                          {ragLoading ? (
+                            <div className="flex items-center gap-2">
+                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                              <p className="text-sm text-gray-700">추천 중...</p>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="mb-3">
+                                <p className="text-sm font-semibold text-blue-900">
+                                  {userPreferenceText ? `"${userPreferenceText}" ` : ''}추천 장소 {ragStores.length}개
+                                </p>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                {ragStores.map((store) => (
+                                  <div
+                                    key={store.id}
+                                    onClick={() => handleStoreCardClick(store)}
+                                    className={selectedStore?.id === store.id ? 'ring-2 ring-blue-500 rounded-xl' : ''}
+                                  >
+                                    <StoreCard 
+                                      store={store} 
+                                      isSelected={selectedStore?.id === store.id}
+                                      onViewCountUpdate={(placeId, viewCount) => {
+                                        setRagStores(prevStores => 
+                                          prevStores.map(s => 
+                                            s.id === placeId 
+                                              ? { ...s, viewCount }
+                                              : s
+                                          )
+                                        );
+                                      }}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                              <button
+                                onClick={() => {
+                                  setShowRagResults(false);
+                                  setRagStores([]);
+                                  setUserPreferenceText('');
+                                }}
+                                className="mt-3 text-xs text-blue-600 hover:text-blue-800 underline"
+                              >
+                                추천 결과 닫기
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
                       
                       <div className="mb-4">
                         <h2 className="text-lg font-bold text-gray-900">

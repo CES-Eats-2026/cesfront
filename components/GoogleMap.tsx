@@ -1020,9 +1020,22 @@ export default function GoogleMapComponent({
         {/* stores 배열의 각 장소에 대한 마커 - 유형 필터 및 거리 필터 적용 */}
         {stores
           ?.filter((store) => {
-            // 유형 필터링만 수행 (거리 제한 제거)
+            // 유형 필터링
             const typeMatch = type === 'all' || store.type === type || (type === 'other' && (!store.type || store.type === 'other'));
-            return typeMatch;
+            if (!typeMatch) return false;
+            
+            // 거리 필터링: 원형 반경 내에 있는 장소만 표시
+            if (center && radiusKm) {
+              const distance = calculateDistance(
+                center.lat,
+                center.lng,
+                store.latitude,
+                store.longitude
+              );
+              return distance <= radiusKm;
+            }
+            
+            return true; // center나 radiusKm이 없으면 모든 장소 표시
           })
           .map((store) => (
             <Marker
