@@ -109,6 +109,24 @@ export default function Home() {
   const [isRandomResult, setIsRandomResult] = useState<boolean>(false); // 랜덤 결과 여부
   const [isInLasVegas, setIsInLasVegas] = useState<boolean | null>(null); // Las Vegas 여부 (null: 확인 중)
   const [showLocationModal, setShowLocationModal] = useState(false); // 위치 안내 모달 표시 여부
+  const locationModalTimeoutRef = useRef<NodeJS.Timeout | null>(null); // 모바일에서 메시지 자동 숨김 타이머
+  
+  // 모바일에서 위치 모달을 10초 후 자동으로 숨기는 헬퍼 함수
+  const showLocationModalWithAutoHide = useCallback(() => {
+    setShowLocationModal(true);
+    
+    // 모바일에서만 10초 후 자동으로 숨김
+    if (!isDesktop) {
+      // 기존 타이머가 있으면 정리
+      if (locationModalTimeoutRef.current) {
+        clearTimeout(locationModalTimeoutRef.current);
+      }
+      locationModalTimeoutRef.current = setTimeout(() => {
+        setShowLocationModal(false);
+        locationModalTimeoutRef.current = null;
+      }, 10000); // 10초
+    }
+  }, [isDesktop]);
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(null); // GPS 위치
   const watchIdRef = useRef<number | null>(null); // GPS 추적 ID
 
@@ -141,9 +159,9 @@ export default function Home() {
     if (!navigator.geolocation) {
       console.log('Geolocation is not supported by this browser');
       setIsInLasVegas(false);
-    setLocation(fixedLocation);
-    setMapCenter(fixedLocation);
-      setShowLocationModal(true);
+      setLocation(fixedLocation);
+      setMapCenter(fixedLocation);
+      showLocationModalWithAutoHide();
       return;
     }
 
@@ -180,16 +198,11 @@ export default function Home() {
                 setIsInLasVegas(false);
                 setLocation(fixedLocation);
                 setMapCenter(fixedLocation);
-                setShowLocationModal(true);
+                showLocationModalWithAutoHide();
                 if (watchIdRef.current !== null) {
                   navigator.geolocation.clearWatch(watchIdRef.current);
                   watchIdRef.current = null;
                 }
-                
-                // 5초 후 자동으로 오버레이 숨기기
-                setTimeout(() => {
-                  setShowLocationModal(false);
-                }, 5000);
               }
             },
             (error) => {
@@ -205,7 +218,7 @@ export default function Home() {
           // Las Vegas에 없으면 고정 위치 사용
           setLocation(fixedLocation);
           setMapCenter(fixedLocation);
-          setShowLocationModal(true);
+          showLocationModalWithAutoHide();
           console.log('Not in Las Vegas, using fixed location');
         }
       },
@@ -215,12 +228,7 @@ export default function Home() {
         setIsInLasVegas(false);
         setLocation(fixedLocation);
         setMapCenter(fixedLocation);
-        setShowLocationModal(true);
-        
-        // 5초 후 자동으로 오버레이 숨기기
-        setTimeout(() => {
-          setShowLocationModal(false);
-        }, 5000);
+        showLocationModalWithAutoHide();
       },
       {
         enableHighAccuracy: true,
@@ -259,8 +267,13 @@ export default function Home() {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
+      // 위치 모달 타이머 정리
+      if (locationModalTimeoutRef.current) {
+        clearTimeout(locationModalTimeoutRef.current);
+        locationModalTimeoutRef.current = null;
+      }
     };
-  }, [isLocationInLasVegas]);
+  }, [isLocationInLasVegas, showLocationModalWithAutoHide]);
 
   const fetchRecommendations = useCallback(async () => {
     const currentLocation = location || fixedLocation;
