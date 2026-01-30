@@ -30,11 +30,18 @@ function RecommendContent() {
       }
 
       try {
+        // timeOption에서 거리 계산 (도보 속도 5km/h 기준)
+        let maxDistanceKm = (time / 60) * 5; // km 단위
+        // 최소 0.1km (100m), 최대 2km
+        if (maxDistanceKm < 0.1) maxDistanceKm = 0.1;
+        if (maxDistanceKm > 2.0) maxDistanceKm = 2.0;
+
         const response = await getRecommendations({
           latitude: lat,
           longitude: lng,
           timeOption: time,
           type: type,
+          maxDistanceKm: maxDistanceKm, // 거리 정보 전달
         });
         setStores(response.stores);
       } catch (err) {

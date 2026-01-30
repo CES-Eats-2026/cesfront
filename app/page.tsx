@@ -221,6 +221,12 @@ export default function Home() {
     setSelectedStore(null);
 
     try {
+      // timeOption에서 거리 계산 (도보 속도 5km/h 기준)
+      let maxDistanceKm = (timeOption / 60) * 5; // km 단위
+      // 최소 0.1km (100m), 최대 2km
+      if (maxDistanceKm < 0.1) maxDistanceKm = 0.1;
+      if (maxDistanceKm > 2.0) maxDistanceKm = 2.0;
+
       // type을 'all'로 전송하여 원 안의 모든 장소를 가져옴
       // 타입 필터링은 프론트엔드에서 수행
       const response = await getRecommendations({
@@ -228,8 +234,23 @@ export default function Home() {
         longitude: currentLocation.lng,
         timeOption: timeOption,
         type: 'all', // 항상 'all'로 전송하여 모든 장소 가져오기
+        maxDistanceKm: maxDistanceKm, // 거리 정보 전달
       });
-      setStores(response.stores);
+      
+      // 백엔드가 거리 필터링을 하지 않을 수 있으므로 프론트엔드에서 추가 필터링
+      const filteredStores = response.stores.filter(store => {
+        const distance = calculateDistance(
+          currentLocation.lat,
+          currentLocation.lng,
+          store.latitude,
+          store.longitude
+        );
+        return distance <= maxDistanceKm;
+      });
+      
+      console.log(`거리 필터링: 요청 거리=${maxDistanceKm}km, 전체 결과=${response.stores.length}개, 필터링 후=${filteredStores.length}개`);
+      
+      setStores(filteredStores);
       setDisplayedCount(10); // 새 검색 시 초기화
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '장소 정보를 가져오는데 실패했습니다.';
@@ -239,7 +260,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [location, timeOption]); // type 제거 - 프론트엔드에서 필터링
+  }, [location, timeOption, calculateDistance]); // calculateDistance 의존성 추가
 
   // RAG 추천 함수
   const fetchRagRecommendations = useCallback(async (userPreference: string) => {

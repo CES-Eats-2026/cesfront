@@ -75,6 +75,7 @@ export interface RecommendationRequest {
   longitude: number;
   timeOption: number; // 분 단위
   type: StoreType;
+  maxDistanceKm?: number; // 최대 거리 (km) - 선택적 필드
 }
 
 export interface RecommendationResponse {
