@@ -8,69 +8,7 @@ import StoreCard from '@/components/StoreCard';
 import FeedbackModal from '@/components/FeedbackModal';
 import SplashScreen from '@/components/SplashScreen';
 import { getRecommendations, sendFeedbackToDiscord, incrementPlaceView, getRagRecommendations } from '@/lib/api';
-import { StoreType, TimeOption, Store } from '@/types';
-
-// 유형별 Google Places API types 매핑 (Redis에 실제 저장된 types 기반)
-const TYPE_TO_PLACES_TYPES: Record<StoreType, string[]> = {
-  'all': [], // 전체는 모든 타입 포함
-  'restaurant': [
-    // 일반 레스토랑
-    'restaurant', 'food', 'establishment',
-    // 국가별 레스토랑
-    'american_restaurant', 'asian_restaurant', 'brazilian_restaurant',
-    'chinese_restaurant', 'french_restaurant', 'italian_restaurant',
-    'japanese_restaurant', 'korean_restaurant', 'mexican_restaurant',
-    // 특수 레스토랑
-    'breakfast_restaurant', 'brunch_restaurant', 'buffet_restaurant',
-    'dessert_restaurant', 'diner', 'fine_dining_restaurant',
-    'pizza_restaurant', 'seafood_restaurant', 'steak_house',
-    'sushi_restaurant', 'vegetarian_restaurant',
-    // 기타 음식 관련
-    'bar_and_grill', 'barbecue_restaurant', 'catering_service', 'deli'
-  ],
-  'cafe': [
-    'cafe', 'coffee_shop', 'internet_cafe', 'tea_house'
-  ],
-  'fastfood': [
-    'fast_food_restaurant', 'hamburger_restaurant', 'sandwich_shop',
-    'meal_takeaway', 'meal_delivery', 'food_delivery'
-  ],
-  'bar': [
-    'bar', 'night_club', 'pub'
-  ],
-  'food': [
-    'restaurant', 'food', 'food_store', 'meal_takeaway', 'meal_delivery',
-    'food_delivery', 'establishment'
-  ],
-  'bakery': [
-    'bakery', 'bagel_shop', 'donut_shop', 'confectionery',
-    'candy_store', 'chocolate_shop', 'dessert_shop', 'ice_cream_shop'
-  ],
-  'meal_delivery': [
-    'meal_delivery', 'food_delivery', 'meal_takeaway', 'fast_food_restaurant'
-  ],
-  'night_club': [
-    'night_club', 'bar', 'pub'
-  ],
-  'liquor_store': [
-    'liquor_store'
-  ],
-  'store': [
-    'store', 'clothing_store', 'shoe_store', 'electronics_store',
-    'furniture_store', 'home_goods_store', 'home_improvement_store',
-    'gift_shop', 'sporting_goods_store', 'hardware_store'
-  ],
-  'shopping_mall': [
-    'shopping_mall', 'department_store'
-  ],
-  'supermarket': [
-    'supermarket', 'grocery_store', 'food_store', 'convenience_store'
-  ],
-  'convenience_store': [
-    'convenience_store', 'grocery_store', 'food_store'
-  ],
-  'other': [] // 기타는 매칭되지 않는 모든 타입
-};
+import { StoreType, TimeOption, Store, TYPE_TO_PLACES_TYPES } from '@/types';
 
 export default function Home() {
   const [showSplash, setShowSplash] = useState(true);

@@ -2,7 +2,7 @@
 
 import { useMemo, useEffect, useRef, useCallback, useState } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow, OverlayView } from '@react-google-maps/api';
-import { Store, StoreType, TimeOption } from '@/types';
+import { Store, StoreType, TimeOption, TYPE_TO_PLACES_TYPES } from '@/types';
 import { getGoogleMapsDeepLink } from '@/lib/api';
 
 interface GoogleMapProps {
@@ -1017,12 +1017,22 @@ export default function GoogleMapComponent({
           }}
         />
 
-        {/* stores 배열의 각 장소에 대한 마커 - 유형 필터 및 거리 필터 적용 */}
+        {/* stores 배열의 각 장소에 대한 마커 - 유형 필터 및 거리 필터 적용 (리스트와 동일: store.types + TYPE_TO_PLACES_TYPES) */}
         {stores
           ?.filter((store) => {
-            // 유형 필터링
-            const typeMatch = type === 'all' || store.type === type || (type === 'other' && (!store.type || store.type === 'other'));
-            if (!typeMatch) return false;
+            // 유형 필터링: 리스트와 동일한 로직 (store.types 기반)
+            if (type === 'all') {
+              // no-op, typeMatch true
+            } else if (store.types && store.types.length > 0) {
+              const typeMapping = TYPE_TO_PLACES_TYPES[type];
+              if (typeMapping && typeMapping.length > 0) {
+                const typeMatch = store.types.some((storeType) => typeMapping.includes(storeType));
+                if (!typeMatch) return false;
+              }
+            } else {
+              const typeMatch = store.type === type || (type === 'other' && (!store.type || store.type === 'other'));
+              if (!typeMatch) return false;
+            }
             
             // 거리 필터링: 원형 반경 내에 있는 장소만 표시
             if (center && radiusKm) {
