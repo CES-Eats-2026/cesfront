@@ -130,6 +130,115 @@ export async function getRagRecommendations(
   }
 }
 
+export type RagAsyncRequestStatus = 'PROCESSING' | 'DONE' | 'ERROR';
+
+export interface RagEnqueueResponseV2 {
+  status: 'PROCESSING';
+  requestId: string;
+}
+
+export interface RagPollResponseV2 {
+  status: RagAsyncRequestStatus;
+  result?: {
+    stores: Store[];
+    isRandom: boolean;
+  };
+  error?: string;
+  message?: string;
+}
+
+/**
+ * (ver.2) RAG 추천 요청 enqueue (즉시 requestId 반환)
+ */
+export async function enqueueRagRecommendationV2(
+  latitude: number,
+  longitude: number,
+  maxDistanceKm: number,
+  userPreference: string,
+  signal?: AbortSignal
+): Promise<RagEnqueueResponseV2> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/rag/recommendations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ latitude, longitude, maxDistanceKm, userPreference }),
+      signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('RAG enqueue API Error:', response.status, errorText);
+      throw new Error(`Failed to enqueue RAG request: ${response.status} ${errorText}`);
+    }
+
+    const data: unknown = await response.json();
+    const requestId =
+      typeof (data as { requestId?: unknown })?.requestId === 'string'
+        ? ((data as { requestId: string }).requestId as string)
+        : null;
+
+    if (!requestId) {
+      throw new Error('RAG 요청을 시작했지만 requestId를 받지 못했습니다.');
+    }
+
+    return { status: 'PROCESSING', requestId };
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      throw new Error('백엔드 서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인하세요.');
+    }
+    throw error;
+  }
+}
+
+/**
+ * (ver.2) RAG 추천 요청 상태 조회 (polling)
+ */
+export async function getRagRequestV2(
+  requestId: string,
+  signal?: AbortSignal
+): Promise<RagPollResponseV2> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/rag/requests/${encodeURIComponent(requestId)}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('RAG poll API Error:', response.status, errorText);
+      throw new Error(`Failed to poll RAG request: ${response.status} ${errorText}`);
+    }
+
+    const data: any = await response.json();
+    const status: RagAsyncRequestStatus =
+      data?.status === 'DONE' || data?.status === 'ERROR' ? data.status : 'PROCESSING';
+
+    const stores = Array.isArray(data?.result?.stores) ? (data.result.stores as Store[]) : [];
+    const isRandom = Boolean(data?.result?.isRandom);
+
+    const result =
+      status === 'DONE'
+        ? {
+            stores,
+            isRandom,
+          }
+        : undefined;
+
+    return {
+      status,
+      result,
+      error: typeof data?.error === 'string' ? data.error : undefined,
+      message: typeof data?.message === 'string' ? data.message : undefined,
+    };
+  } catch (error) {
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      throw new Error('백엔드 서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인하세요.');
+    }
+    throw error;
+  }
+}
+
 /**
  * 피드백을 백엔드 API를 통해 Discord로 전송
  * @param feedback 피드백 내용

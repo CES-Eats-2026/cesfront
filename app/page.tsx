@@ -7,7 +7,7 @@ import GoogleMapComponent from '@/components/GoogleMap';
 import StoreCard from '@/components/StoreCard';
 import FeedbackModal from '@/components/FeedbackModal';
 import SplashScreen from '@/components/SplashScreen';
-import { getRecommendations, sendFeedbackToDiscord, incrementPlaceView, getRagRecommendations } from '@/lib/api';
+import { getRecommendations, sendFeedbackToDiscord, incrementPlaceView, enqueueRagRecommendationV2, getRagRequestV2 } from '@/lib/api';
 import { StoreType, TimeOption, Store, TYPE_TO_PLACES_TYPES } from '@/types';
 
 export default function Home() {
@@ -45,6 +45,8 @@ export default function Home() {
   const [showRagResults, setShowRagResults] = useState(false); // RAG 결과 표시 여부
   const [userPreferenceText, setUserPreferenceText] = useState<string>(''); // 사용자가 입력한 자연어
   const [isRandomResult, setIsRandomResult] = useState<boolean>(false); // 랜덤 결과 여부
+  const ragAbortControllerRef = useRef<AbortController | null>(null);
+  const ragRequestTokenRef = useRef(0);
   const [isInLasVegas, setIsInLasVegas] = useState<boolean | null>(null); // Las Vegas 여부 (null: 확인 중)
   const [showLocationModal, setShowLocationModal] = useState(false); // 위치 안내 모달 표시 여부
   const locationModalTimeoutRef = useRef<NodeJS.Timeout | null>(null); // 모바일에서 메시지 자동 숨김 타이머
@@ -213,6 +215,15 @@ export default function Home() {
     };
   }, [isLocationInLasVegas, showLocationModalWithAutoHide]);
 
+  // 컴포넌트 언마운트 시 진행 중인 RAG polling 중단
+  useEffect(() => {
+    return () => {
+      ragAbortControllerRef.current?.abort();
+      ragAbortControllerRef.current = null;
+      ragRequestTokenRef.current += 1; // 이후 응답 무시
+    };
+  }, []);
+
   const fetchRecommendations = useCallback(async () => {
     const currentLocation = location || fixedLocation;
     
@@ -265,37 +276,93 @@ export default function Home() {
   // RAG 추천 함수
   const fetchRagRecommendations = useCallback(async (userPreference: string) => {
     const currentLocation = location || fixedLocation;
-    
+
+    // 이전 요청이 있으면 중단
+    ragAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    ragAbortControllerRef.current = controller;
+    const requestToken = (ragRequestTokenRef.current += 1);
+
+    const sleep = (ms: number, signal: AbortSignal) =>
+      new Promise<void>((resolve, reject) => {
+        const t = setTimeout(() => resolve(), ms);
+        signal.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(t);
+            reject(new DOMException('Aborted', 'AbortError'));
+          },
+          { once: true }
+        );
+      });
+
     setRagLoading(true);
     setError(null);
     setShowRagResults(true);
+    setRagStores([]);
+    setUserPreferenceText(userPreference);
+    setIsRandomResult(false);
 
     try {
-      const response = await getRagRecommendations(
+      const { requestId } = await enqueueRagRecommendationV2(
         currentLocation.lat,
         currentLocation.lng,
         5, // 최대 5km
-        userPreference
+        userPreference,
+        controller.signal
       );
-      
-      setRagStores(response.stores || []);
-      setUserPreferenceText(userPreference); // 사용자 입력 텍스트 저장
-      setIsRandomResult(response.isRandom || false); // 랜덤 결과 여부 저장
-      
-      // 입력 필드 초기화
+
+      // 입력 필드 초기화 (요청이 시작되면 바로 비움)
       setInputText('');
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
+
+      const startedAt = Date.now();
+      const maxTotalMs = 2 * 60 * 1000; // 2분(프론트 안전장치)
+      const pollIntervalMs = 800;
+
+      while (true) {
+        if (ragRequestTokenRef.current !== requestToken) return;
+
+        const polled = await getRagRequestV2(requestId, controller.signal);
+
+        if (polled.status === 'DONE') {
+          if (ragRequestTokenRef.current !== requestToken) return;
+          setRagStores(polled.result?.stores || []);
+          setIsRandomResult(Boolean(polled.result?.isRandom));
+          break;
+        }
+
+        if (polled.status === 'ERROR') {
+          throw new Error(polled.error || polled.message || '추천 처리 중 오류가 발생했습니다.');
+        }
+
+        if (Date.now() - startedAt > maxTotalMs) {
+          throw new Error('추천이 지연되고 있어요. 잠시 후 다시 시도해 주세요.');
+        }
+
+        await sleep(pollIntervalMs, controller.signal);
+      }
     } catch (err) {
+      // abort(새 요청/닫기/언마운트)는 에러로 노출하지 않음
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return;
+      }
+
       const errorMessage = err instanceof Error ? err.message : '추천을 가져오는데 실패했습니다.';
-      setError(errorMessage);
-      console.error('Error fetching RAG recommendations:', err);
-      setRagStores([]);
-      setUserPreferenceText('');
-      setIsRandomResult(false);
+      console.error('Error fetching RAG recommendations (v2):', err);
+
+      if (ragRequestTokenRef.current === requestToken) {
+        setError(errorMessage);
+        setRagStores([]);
+        setUserPreferenceText('');
+        setIsRandomResult(false);
+      }
     } finally {
-      setRagLoading(false);
+      if (ragRequestTokenRef.current === requestToken) {
+        setRagLoading(false);
+      }
     }
   }, [location]);
 
@@ -1015,6 +1082,11 @@ export default function Home() {
                               </div>
                               <button
                                 onClick={() => {
+                                  // 진행 중인 polling이 있으면 중단
+                                  ragAbortControllerRef.current?.abort();
+                                  ragAbortControllerRef.current = null;
+                                  ragRequestTokenRef.current += 1;
+                                  setRagLoading(false);
                                   setShowRagResults(false);
                                   setRagStores([]);
                                   setUserPreferenceText('');
